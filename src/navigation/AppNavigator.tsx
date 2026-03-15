@@ -8,40 +8,51 @@ import { LiveScreen } from '../screens/LiveScreen';
 import { FavoritesScreen } from '../screens/FavoritesScreen';
 import { RecentScreen } from '../screens/RecentScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
-import { PlayerProvider } from '../context/PlayerContext';
+import { PlayerProvider, usePlayer } from '../context/PlayerContext';
 
 const Stack = createNativeStackNavigator();
 
-function MainLayout() {
+/** App UI (Sidebar + Stack). Not rendered when fullscreen so there is nothing for TV focus to escape to. */
+function Layout() {
   return (
-    <PlayerProvider>
-      <View className="flex-1 flex-row" style={{ backgroundColor: '#0e0e12' }}>
-        <Sidebar />
-        <View className="flex-1" style={{ minWidth: 0 }}>
-          <Stack.Navigator
-            initialRouteName="Live"
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: '#0e0e12' },
-              animation: 'none',
-            }}
-          >
-            <Stack.Screen name="Live" component={LiveScreen} />
-            <Stack.Screen name="Favorites" component={FavoritesScreen} />
-            <Stack.Screen name="Recent" component={RecentScreen} />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-          </Stack.Navigator>
-        </View>
-        <PlayerColumn />
+    <View className="flex-1 flex-row" style={{ minWidth: 0, backgroundColor: '#0e0e12' }}>
+      <Sidebar />
+      <View className="flex-1" style={{ minWidth: 0 }}>
+        <Stack.Navigator
+          initialRouteName="Live"
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: '#0e0e12' },
+            animation: 'none',
+          }}
+        >
+          <Stack.Screen name="Live" component={LiveScreen} />
+          <Stack.Screen name="Favorites" component={FavoritesScreen} />
+          <Stack.Screen name="Recent" component={RecentScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+        </Stack.Navigator>
       </View>
-    </PlayerProvider>
+    </View>
+  );
+}
+
+/** When fullscreen: only PlayerColumn is rendered (no Layout). Third column only when a channel is selected. */
+function RootLayout() {
+  const { fullscreen, currentChannel } = usePlayer();
+  return (
+    <View className="flex-1 flex-row" style={{ backgroundColor: '#0e0e12' }}>
+      {!fullscreen && <Layout />}
+      {currentChannel != null && <PlayerColumn />}
+    </View>
   );
 }
 
 export function AppNavigator() {
   return (
     <NavigationContainer>
-      <MainLayout />
+      <PlayerProvider>
+        <RootLayout />
+      </PlayerProvider>
     </NavigationContainer>
   );
 }

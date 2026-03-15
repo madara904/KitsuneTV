@@ -36,6 +36,7 @@ const DebouncedSearchInput = memo(function DebouncedSearchInput({
   isFocused,
   onFocusKey,
   onBlurKey,
+  focusable = true,
 }: {
   placeholder: string;
   onSearchChange: (query: string) => void;
@@ -44,6 +45,7 @@ const DebouncedSearchInput = memo(function DebouncedSearchInput({
   isFocused: boolean;
   onFocusKey: () => void;
   onBlurKey: () => void;
+  focusable?: boolean;
 }) {
   const [localValue, setLocalValue] = useState('');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,6 +77,7 @@ const DebouncedSearchInput = memo(function DebouncedSearchInput({
         onChangeText={setLocalValue}
         onFocus={onFocusKey}
         onBlur={onBlurKey}
+        focusable={focusable}
         style={{ paddingVertical: 8, color: '#fff' }}
       />
     </View>
@@ -92,6 +95,7 @@ const CategoryPill = memo(function CategoryPill({
   onFocusKey,
   onBlurKey,
   width,
+  focusable,
 }: {
   focusKey: string;
   label: string;
@@ -101,12 +105,14 @@ const CategoryPill = memo(function CategoryPill({
   onFocusKey: (k: string) => void;
   onBlurKey: () => void;
   width?: number;
+  focusable?: boolean;
 }) {
   return (
     <Pressable
       onPress={onSelect}
       onFocus={() => onFocusKey(focusKey)}
       onBlur={onBlurKey}
+      focusable={focusable !== false}
       style={{
         width: width ?? undefined,
         minWidth: width ?? undefined,
@@ -119,7 +125,6 @@ const CategoryPill = memo(function CategoryPill({
         backgroundColor: isSelected ? 'rgba(139, 92, 246, 0.25)' : 'rgba(39, 39, 50, 0.8)',
         justifyContent: 'center',
       }}
-      focusable
     >
       <Text className="text-white text-sm" numberOfLines={1}>{label}</Text>
     </Pressable>
@@ -137,6 +142,7 @@ const ChannelRow = memo(function ChannelRow({
   onFocusKey,
   onBlurKey,
   nextFocusRight,
+  focusable,
 }: {
   item: Channel;
   isFocused: boolean;
@@ -149,6 +155,7 @@ const ChannelRow = memo(function ChannelRow({
   onBlurKey: () => void;
   /** Android TV: node handle of player first focusable so D-pad Right goes to player */
   nextFocusRight?: number | null;
+  focusable?: boolean;
 }) {
   const rowRef = useRef<React.ComponentRef<typeof Pressable>>(null);
   const heartRef = useRef<React.ComponentRef<typeof Pressable>>(null);
@@ -186,7 +193,7 @@ const ChannelRow = memo(function ChannelRow({
         borderWidth: isFocused ? 3 : 0,
         borderColor: '#d8b4fe',
       }}
-      focusable
+      focusable={focusable !== false}
     >
       {item.logo ? (
         <Image source={{ uri: item.logo }} style={{ width: 40, height: 40, borderRadius: 8, backgroundColor: '#272732' }} resizeMode="cover" />
@@ -216,7 +223,7 @@ const ChannelRow = memo(function ChannelRow({
           borderColor: '#d8b4fe',
           borderRadius: 8,
         }}
-        focusable
+        focusable={focusable !== false}
         hitSlop={8}
       >
         <MaterialCommunityIcons
@@ -231,7 +238,7 @@ const ChannelRow = memo(function ChannelRow({
 
 export function LiveScreen() {
   const navigation = useNavigation<any>();
-  const { currentChannel, setCurrentChannel, playerFocusNodeHandle } = usePlayer();
+  const { currentChannel, setCurrentChannel, playerFocusNodeHandle, fullscreen, playerControlsFocused, setPlayerControlsFocused } = usePlayer();
   const [providers, setProviders] = useState<Provider[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -363,6 +370,13 @@ export function LiveScreen() {
   }, []);
 
   const setFocusedKeyStable = useCallback((k: string) => setFocusedKey(k), []);
+  const onChannelFocusKey = useCallback(
+    (k: string) => {
+      setFocusedKey(k);
+      if (k.startsWith('channel-')) setPlayerControlsFocused(false);
+    },
+    [setPlayerControlsFocused]
+  );
   const clearFocusedKey = useCallback(() => setFocusedKey(null), []);
   const setCategoryId = useCallback((id: string | null) => setSelectedCategoryId(id), []);
 
@@ -374,18 +388,19 @@ export function LiveScreen() {
     ({ item }: ListRenderItemInfo<Channel>) => (
       <ChannelRow
         item={item}
-        isFocused={focusedKey === `channel-${item.id}`}
-        isHeartFocused={focusedKey === `channel-fav-${item.id}`}
+        isFocused={focusedKey === `channel-${item.id}` && !playerControlsFocused}
+        isHeartFocused={focusedKey === `channel-fav-${item.id}` && !playerControlsFocused}
         isFav={favoriteIds.has(item.id)}
         isNowPlaying={currentChannel?.id === item.id}
         onPress={openPlayer}
         onFavorite={toggleFavorite}
-        onFocusKey={setFocusedKeyStable}
+        onFocusKey={onChannelFocusKey}
         onBlurKey={clearFocusedKey}
         nextFocusRight={playerFocusNodeHandle}
+        focusable={!fullscreen}
       />
     ),
-    [focusedKey, favoriteIds, currentChannel?.id, openPlayer, toggleFavorite, setFocusedKeyStable, clearFocusedKey, playerFocusNodeHandle]
+    [focusedKey, favoriteIds, currentChannel?.id, openPlayer, toggleFavorite, onChannelFocusKey, clearFocusedKey, playerFocusNodeHandle, fullscreen, playerControlsFocused]
   );
 
   const getItemLayout = useCallback(
@@ -420,10 +435,11 @@ export function LiveScreen() {
           onFocusKey={setFocusedKeyStable}
           onBlurKey={clearFocusedKey}
           width={CATEGORY_PILL_WIDTH}
+          focusable={!fullscreen}
         />
       );
     },
-    [selectedCategoryId, focusedKey, setFocusedKeyStable, clearFocusedKey, setCategoryId]
+    [selectedCategoryId, focusedKey, setFocusedKeyStable, clearFocusedKey, setCategoryId, fullscreen]
   );
 
   if (loading && providers.length === 0) {
@@ -444,12 +460,12 @@ export function LiveScreen() {
           onPress={() => navigation.navigate('Settings')}
           onFocus={() => setFocusedKey('open-settings')}
           onBlur={() => setFocusedKey(null)}
+          focusable={!fullscreen}
           className="px-6 py-3 rounded-xl bg-primary-500"
           style={{
             borderWidth: openSettingsFocused ? 3 : 0,
             borderColor: '#d8b4fe',
           }}
-          focusable
         >
           <Text className="text-white font-medium">Open Settings</Text>
         </Pressable>
@@ -458,7 +474,12 @@ export function LiveScreen() {
   }
 
   return (
-    <View className="flex-1" style={{ backgroundColor: '#0e0e12' }}>
+    <View
+      className="flex-1"
+      style={{ backgroundColor: '#0e0e12' }}
+      pointerEvents={fullscreen ? 'none' : 'auto'}
+      importantForAccessibility={fullscreen ? 'no-hide-descendants' : 'auto'}
+    >
       {/* Provider pills – only when multiple */}
       {providers.length > 1 && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#272732' }}>
@@ -478,7 +499,7 @@ export function LiveScreen() {
                   borderColor: isFocused ? '#d8b4fe' : '#3f3f46',
                   backgroundColor: selectedProviderId === p.id ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
                 }}
-                focusable
+                focusable={!fullscreen}
               >
                 <Text className="text-white text-sm">{p.name}</Text>
               </Pressable>
@@ -497,6 +518,7 @@ export function LiveScreen() {
           isFocused={focusedKey === 'search'}
           onFocusKey={() => setFocusedKey('search')}
           onBlurKey={clearFocusedKey}
+          focusable={!fullscreen}
         />
       </View>
 
@@ -507,6 +529,7 @@ export function LiveScreen() {
             onPress={() => setCategoriesExpanded((e) => !e)}
             onFocus={() => setFocusedKey('categories-toggle')}
             onBlur={clearFocusedKey}
+            focusable={!fullscreen}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -517,7 +540,6 @@ export function LiveScreen() {
               borderWidth: focusedKey === 'categories-toggle' ? 2 : 0,
               borderColor: '#d8b4fe',
             }}
-            focusable
           >
             <Text className="text-white font-medium">Categories</Text>
             <MaterialCommunityIcons name={categoriesExpanded ? 'chevron-up' : 'chevron-down'} size={20} color="#9ca3af" />

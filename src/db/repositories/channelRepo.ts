@@ -12,10 +12,23 @@ const toChannel = (row: Record<string, unknown>): Channel => ({
   epgChannelId: row.epg_channel_id != null ? String(row.epg_channel_id) : undefined,
 });
 
+const CHANNEL_INSERT_SQL =
+  'INSERT OR REPLACE INTO channels (id, provider_id, category_id, name, logo, stream_url, stream_type, epg_channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+
+export type SQLBatchTuple = [string] | [string, unknown[]];
+
 /** When loading "All" categories we limit to avoid 14k+ rows in memory (use search or pick a category for more). */
 export const ALL_CHANNELS_LIMIT = 500;
 
 export const channelRepo = {
+  /** Build one batch tuple per channel for executeBatchAsync (same query, one params array per row). */
+  getInsertTuples(channels: Channel[]): SQLBatchTuple[] {
+    return channels.map((ch) => [
+      CHANNEL_INSERT_SQL,
+      [ch.id, ch.providerId, ch.categoryId, ch.name, ch.logo ?? null, ch.streamUrl, ch.streamType ?? null, ch.epgChannelId ?? null],
+    ]);
+  },
+
   async byProvider(providerId: string, categoryId?: string, limit?: number): Promise<Channel[]> {
     if (categoryId) {
       const res = await getDb().executeAsync(

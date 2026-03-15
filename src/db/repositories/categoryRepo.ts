@@ -8,7 +8,20 @@ const toCategory = (row: Record<string, unknown>): Category => ({
   parentId: row.parent_id != null ? String(row.parent_id) : undefined,
 });
 
+const CATEGORY_INSERT_SQL =
+  'INSERT OR REPLACE INTO categories (id, provider_id, name, parent_id) VALUES (?, ?, ?, ?)';
+
+export type SQLBatchTuple = [string] | [string, unknown[]];
+
 export const categoryRepo = {
+  /** Build one batch tuple per category for executeBatchAsync. */
+  getInsertTuples(categories: Category[]): SQLBatchTuple[] {
+    return categories.map((c) => [
+      CATEGORY_INSERT_SQL,
+      [c.id, c.providerId, c.name, c.parentId ?? null],
+    ]);
+  },
+
   async byProvider(providerId: string): Promise<Category[]> {
     const res = await getDb().executeAsync(
       'SELECT id, provider_id, name, parent_id FROM categories WHERE provider_id = ? ORDER BY name',

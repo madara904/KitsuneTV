@@ -7,7 +7,9 @@
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "node scripts/clean-metro-watch.js && react-native start",
-    "test": "jest"
+    "test": "jest",
+    "build:apk:debug": "set \"JAVA_HOME=C:\\Program Files\\Microsoft\\jdk-17.0.18.8-hotspot\" && set \"ANDROID_HOME=%LOCALAPPDATA%\\Android\\Sdk\" && set \"PATH=%JAVA_HOME%\\bin;%ANDROID_HOME%\\platform-tools;%PATH%\" && cd android && gradlew.bat assembleDebug",
+    "build:apk:release": "set \"JAVA_HOME=C:\\Program Files\\Microsoft\\jdk-17.0.18.8-hotspot\" && set \"ANDROID_HOME=%LOCALAPPDATA%\\Android\\Sdk\" && set \"PATH=%JAVA_HOME%\\bin;%ANDROID_HOME%\\platform-tools;%PATH%\" && cd android && gradlew.bat assembleRelease"
   },
   "dependencies": {
     "@react-native-clipboard/clipboard": "^1.16.3",

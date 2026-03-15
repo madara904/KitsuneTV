@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Allow HTTP (cleartext) for IPTV provider URLs and for React Native packager when debugging.
+  Ref: https://developer.android.com/privacy-and-security/security-config#CleartextTrafficOptIn
+-->
+<network-security-config>
+    <!-- Allow cleartext to any domain (IPTV providers often use http://) -->
+    <base-config cleartextTrafficPermitted="true" />
+    <!-- Explicit cleartext for debug/packager; some devices need this for Metro -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">10.0.3.2</domain>
+        <domain includeSubdomains="true">10.0.1.1</domain>
+    </domain-config>
+</network-security-config>

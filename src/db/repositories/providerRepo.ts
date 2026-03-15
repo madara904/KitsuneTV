@@ -36,6 +36,13 @@ export const providerRepo = {
     );
   },
 
+  async update(p: Provider): Promise<void> {
+    await getDb().executeAsync(
+      'UPDATE providers SET name = ?, type = ?, url = ?, updated_at = ? WHERE id = ?',
+      [p.name, p.type, p.url, p.updatedAt, p.id]
+    );
+  },
+
   async delete(id: string): Promise<void> {
     getDb().execute('DELETE FROM providers WHERE id = ?', [id]);
   },
