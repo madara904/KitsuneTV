@@ -423,14 +423,23 @@ export function PlayerColumn() {
             }}
             onBlur={() => { setFocusedBtn(null); setPlayerControlsFocused(false); }}
             style={btnStyle(focusedBtn === 'play')}
-            {...(fullscreen && controlsVisible && playHandle != null && fullscreenHandle != null && closeHandle != null
-              ? ({
-                  nextFocusRight: fullscreenHandle,
-                  nextFocusLeft: closeHandle,
-                  nextFocusUp: playHandle,
-                  nextFocusDown: playHandle,
-                } as Record<string, number>)
-              : {})}
+            {...(
+              fullscreen
+                ? (controlsVisible && playHandle != null && fullscreenHandle != null && closeHandle != null
+                    ? ({
+                        nextFocusRight: fullscreenHandle,
+                        nextFocusLeft: closeHandle,
+                        nextFocusUp: playHandle,
+                        nextFocusDown: playHandle,
+                      } as Record<string, number>)
+                    : {})
+                : (playHandle != null
+                    ? ({
+                        nextFocusUp: playHandle,
+                        nextFocusDown: playHandle,
+                      } as Record<string, number>)
+                    : {})
+            )}
           >
             <MaterialCommunityIcons name={paused ? 'play' : 'pause'} size={24} color="#fff" />
           </Pressable>
@@ -448,14 +457,23 @@ export function PlayerColumn() {
             }}
             onBlur={() => { setFocusedBtn(null); setPlayerControlsFocused(false); }}
             style={btnStyle(focusedBtn === 'fullscreen')}
-            {...(fullscreen && controlsVisible && playHandle != null && fullscreenHandle != null && closeHandle != null
-              ? ({
-                  nextFocusLeft: playHandle,
-                  nextFocusRight: closeHandle,
-                  nextFocusUp: fullscreenHandle,
-                  nextFocusDown: fullscreenHandle,
-                } as Record<string, number>)
-              : {})}
+            {...(
+              fullscreen
+                ? (controlsVisible && playHandle != null && fullscreenHandle != null && closeHandle != null
+                    ? ({
+                        nextFocusLeft: playHandle,
+                        nextFocusRight: closeHandle,
+                        nextFocusUp: fullscreenHandle,
+                        nextFocusDown: fullscreenHandle,
+                      } as Record<string, number>)
+                    : {})
+                : (fullscreenHandle != null
+                    ? ({
+                        nextFocusUp: fullscreenHandle,
+                        nextFocusDown: fullscreenHandle,
+                      } as Record<string, number>)
+                    : {})
+            )}
           >
             <MaterialCommunityIcons
               name={fullscreen ? 'fullscreen-exit' : 'fullscreen'}
@@ -474,6 +492,12 @@ export function PlayerColumn() {
               }}
               onBlur={() => { setFocusedBtn(null); setPlayerControlsFocused(false); }}
               style={btnStyle(focusedBtn === 'close')}
+              {...(closeHandle != null
+                ? ({
+                    nextFocusUp: closeHandle,
+                    nextFocusDown: closeHandle,
+                  } as Record<string, number>)
+                : {})}
             >
               <MaterialCommunityIcons name="close" size={22} color="#fff" />
             </Pressable>
