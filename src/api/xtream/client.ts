@@ -1,8 +1,14 @@
 /**
  * Xtream API client - fetch() for React Native.
- * Endpoints: get_live_categories, get_live_streams, get_short_epg.
+ * Endpoints: get_live_categories, get_live_streams, get_short_epg, get_vod_categories, get_vod_streams, get_series_categories, get_series.
  */
-import type { XtreamCategory, XtreamLiveStream, XtreamShortEpgResponse } from './types';
+import type {
+  XtreamCategory,
+  XtreamLiveStream,
+  XtreamSeriesItem,
+  XtreamShortEpgResponse,
+  XtreamVodStream,
+} from './types';
 
 const FETCH_TIMEOUT_MS = 25000;
 
@@ -28,10 +34,12 @@ function baseUrl(config: XtreamConfig): string {
 export function buildStreamUrl(
   config: XtreamConfig,
   streamId: number | string,
-  extension = 'ts'
+  extension = 'ts',
 ): string {
   const base = config.serverUrl.replace(/\/$/, '');
-  return `${base}/live/${encodeURIComponent(config.username)}/${encodeURIComponent(config.password)}/${streamId}.${extension}`;
+  return `${base}/live/${encodeURIComponent(config.username)}/${encodeURIComponent(
+    config.password,
+  )}/${streamId}.${extension}`;
 }
 
 export async function getLiveCategories(config: XtreamConfig): Promise<XtreamCategory[]> {
@@ -66,7 +74,7 @@ export async function getLiveStreams(config: XtreamConfig): Promise<XtreamLiveSt
 
 export async function getShortEpg(
   config: XtreamConfig,
-  streamId: number | string
+  streamId: number | string,
 ): Promise<XtreamShortEpgResponse['epg_listings']> {
   const url = `${baseUrl(config)}&action=get_short_epg&stream_id=${streamId}`;
   try {
@@ -77,4 +85,36 @@ export async function getShortEpg(
   } catch {
     return [];
   }
+}
+
+export async function getVodCategories(config: XtreamConfig): Promise<XtreamCategory[]> {
+  const url = `${baseUrl(config)}&action=get_vod_categories`;
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) throw new Error(`Xtream get_vod_categories: ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getVodStreams(config: XtreamConfig): Promise<XtreamVodStream[]> {
+  const url = `${baseUrl(config)}&action=get_vod_streams`;
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) throw new Error(`Xtream get_vod_streams: ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getSeriesCategories(config: XtreamConfig): Promise<XtreamCategory[]> {
+  const url = `${baseUrl(config)}&action=get_series_categories`;
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) throw new Error(`Xtream get_series_categories: ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getSeries(config: XtreamConfig): Promise<XtreamSeriesItem[]> {
+  const url = `${baseUrl(config)}&action=get_series`;
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) throw new Error(`Xtream get_series: ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 }

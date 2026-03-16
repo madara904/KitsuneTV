@@ -15,10 +15,12 @@ import { providerService } from '../services/providerService';
 import { liveService } from '../services/liveService';
 import { channelRepo } from '../db/repositories/channelRepo';
 import { favoriteRepo } from '../db/repositories/favoriteRepo';
+import { recentRepo } from '../db/repositories/recentRepo';
 import { usePlayer } from '../context/PlayerContext';
 import type { Provider, Channel, Category } from '../lib/types';
 import { ChannelListItem } from '../components/channel/ChannelListItem';
 import { EmptyState } from '../components/common/EmptyState';
+import { ContentModeTabs, type ContentMode } from '../components/common/ContentModeTabs';
 
 const SEARCH_DEBOUNCE_MS = 700;
 const SEARCH_LIMIT = 50;
@@ -148,12 +150,21 @@ export function LiveScreen() {
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [categoryFilterQuery, setCategoryFilterQuery] = useState('');
   const [categoryFilterHandle, setCategoryFilterHandle] = useState<number | null>(null);
+  const [pendingFocusFirstChannel, setPendingFocusFirstChannel] = useState(0);
+  const [contentMode, setContentMode] = useState<ContentMode>('all');
+  const [favoriteChannels, setFavoriteChannels] = useState<Channel[]>([]);
+  const [recentChannels, setRecentChannels] = useState<Channel[]>([]);
   const searchVersionRef = useRef(0);
   const categoryListRef = useRef<FlatList<CategoryListItem>>(null);
   const categoryFilterRef = useRef<TextInput | null>(null);
   const clearFilterHeaderRef = useRef<React.ComponentRef<typeof Pressable> | null>(null);
   const categoriesHeaderRef = useRef<React.ComponentRef<typeof Pressable> | null>(null);
   const [categoriesHeaderHandle, setCategoriesHeaderHandle] = useState<number | null>(null);
+  const [clearFilterHeaderHandle, setClearFilterHeaderHandle] = useState<number | null>(null);
+  const [emptyStateActionHandle, setEmptyStateActionHandle] = useState<number | null>(null);
+  const [modeAllHandle, setModeAllHandle] = useState<number | null>(null);
+  const [modeFavoritesHandle, setModeFavoritesHandle] = useState<number | null>(null);
+  const [modeRecentHandle, setModeRecentHandle] = useState<number | null>(null);
 
   /** Keep category navigation stable and independent from channel search query. */
   const allCategoryListData = useMemo<CategoryListItem[]>(() => {
@@ -171,10 +182,27 @@ export function LiveScreen() {
     return categories.find((c) => c.id === selectedCategoryId)?.name ?? 'All';
   }, [categories, selectedCategoryId]);
 
-  const hasCategoryFilter = selectedCategoryId !== null;
+  const hasCategoryFilter = contentMode === 'all' && selectedCategoryId !== null;
 
-  const showSearchResults = debouncedSearchQuery.length >= MIN_SEARCH_LENGTH;
-  const displayChannels = showSearchResults ? searchResults : channels;
+  const activeModeHandle = useMemo(() => {
+    if (contentMode === 'favorites') return modeFavoritesHandle;
+    if (contentMode === 'recent') return modeRecentHandle;
+    return modeAllHandle;
+  }, [contentMode, modeAllHandle, modeFavoritesHandle, modeRecentHandle]);
+
+  const activeModeChannels = useMemo(() => {
+    if (contentMode === 'favorites') return favoriteChannels;
+    if (contentMode === 'recent') return recentChannels;
+    return channels;
+  }, [contentMode, channels, favoriteChannels, recentChannels]);
+
+  const showSearchResults = contentMode === 'all' && debouncedSearchQuery.length >= MIN_SEARCH_LENGTH;
+  const displayChannels = useMemo(() => {
+    if (contentMode === 'all') return showSearchResults ? searchResults : channels;
+    const q = debouncedSearchQuery.trim().toLowerCase();
+    if (q.length < MIN_SEARCH_LENGTH) return activeModeChannels;
+    return activeModeChannels.filter((c) => c.name.toLowerCase().includes(q));
+  }, [contentMode, showSearchResults, searchResults, channels, debouncedSearchQuery, activeModeChannels]);
 
   const refreshProviders = useCallback(async () => {
     const list = await providerService.list();
@@ -182,6 +210,21 @@ export function LiveScreen() {
     if (list.length > 0 && !selectedProviderId) setSelectedProviderId(list[0].id);
     return list;
   }, [selectedProviderId]);
+
+  const loadCollections = useCallback(async () => {
+    const [favs, recents] = await Promise.all([favoriteRepo.all(), recentRepo.list(50)]);
+    const favIds = favs.map((f) => f.channelId);
+    const favChannels = favIds.length > 0 ? await channelRepo.getMany(favIds) : [];
+    setFavoriteChannels(favChannels);
+
+    const seen = new Set<string>();
+    for (const r of recents) {
+      if (!seen.has(r.channelId)) seen.add(r.channelId);
+    }
+    const recentIds = [...seen];
+    const recentList = recentIds.length > 0 ? await channelRepo.getMany(recentIds) : [];
+    setRecentChannels(recentList);
+  }, []);
 
   const loadData = useCallback(async () => {
     if (!selectedProviderId) {
@@ -200,10 +243,11 @@ export function LiveScreen() {
       setChannels(chs);
       const favs = await favoriteRepo.all();
       setFavoriteIds(new Set(favs.map((f) => f.channelId)));
+      await loadCollections();
     } finally {
       setLoading(false);
     }
-  }, [selectedProviderId, selectedCategoryId]);
+  }, [selectedProviderId, selectedCategoryId, loadCollections]);
 
   useFocusEffect(
     useCallback(() => {
@@ -225,10 +269,9 @@ export function LiveScreen() {
     }
   }, [categories, selectedCategoryId]);
 
-  // Run DB search when debounced query changes. Deferred with setTimeout so UI stays responsive.
-  // InteractionManager deprecation in console comes from React Navigation (useFocusEffect), not from this screen.
+  // Run DB search when debounced query changes (only in 'all' mode). Deferred with setTimeout so UI stays responsive.
   useEffect(() => {
-    if (debouncedSearchQuery.length < MIN_SEARCH_LENGTH || !selectedProviderId) {
+    if (contentMode !== 'all' || debouncedSearchQuery.length < MIN_SEARCH_LENGTH || !selectedProviderId) {
       setSearchResults([]);
       setSearching(false);
       return;
@@ -250,7 +293,7 @@ export function LiveScreen() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [debouncedSearchQuery, selectedProviderId, selectedCategoryId]);
+  }, [contentMode, debouncedSearchQuery, selectedProviderId, selectedCategoryId]);
 
   // Scroll category list so focused pill is visible (virtualized list = only ~12 pills mounted → less lag)
   useEffect(() => {
@@ -273,7 +316,8 @@ export function LiveScreen() {
     else await favoriteRepo.add(channelId);
     const favs = await favoriteRepo.all();
     setFavoriteIds(new Set(favs.map((f) => f.channelId)));
-  }, []);
+    await loadCollections();
+  }, [loadCollections]);
 
   const openPlayer = useCallback((channel: Channel) => {
     setCurrentChannel(channel);
@@ -283,13 +327,17 @@ export function LiveScreen() {
     setSelectedProviderId(id);
     setSelectedCategoryId(null);
     setCategoryFilterQuery('');
+    setContentMode('all');
   }, []);
 
   const setFocusedKeyStable = useCallback((k: string) => setFocusedKey(k), []);
   const onChannelFocusKey = useCallback(
     (k: string) => {
       setFocusedKey(k);
-      if (k.startsWith('channel-')) setPlayerControlsFocused(false);
+      if (k.startsWith('channel-')) {
+        setPlayerControlsFocused(false);
+        setPendingFocusFirstChannel(0);
+      }
     },
     [setPlayerControlsFocused]
   );
@@ -299,11 +347,7 @@ export function LiveScreen() {
   const clearCategoryFilter = useCallback(() => {
     setSelectedCategoryId(null);
     setCategoriesExpanded(false);
-  }, []);
-
-  const focusRef = useCallback((ref: React.RefObject<React.ComponentRef<typeof Pressable> | null>) => {
-    const node = ref.current as unknown as { focus?: () => void } | null;
-    node?.focus?.();
+    setPendingFocusFirstChannel((v) => v + 1);
   }, []);
 
   const handleSearchChange = useCallback((query: string) => {
@@ -311,7 +355,7 @@ export function LiveScreen() {
   }, []);
 
   const renderChannelItem = useCallback(
-    ({ item }: ListRenderItemInfo<Channel>) => (
+    ({ item, index }: ListRenderItemInfo<Channel>) => (
       <ChannelListItem
         channel={item}
         isFocused={focusedKey === `channel-${item.id}` && !playerControlsFocused}
@@ -322,7 +366,15 @@ export function LiveScreen() {
         onFocusKey={onChannelFocusKey}
         onBlurKey={clearFocusedKey}
         nextFocusRight={playerFocusNodeHandle}
+        nextFocusUp={
+          contentMode === 'all'
+            ? hasCategoryFilter
+              ? clearFilterHeaderHandle ?? categoriesHeaderHandle
+              : categoriesHeaderHandle
+            : activeModeHandle
+        }
         focusable={!fullscreen}
+        autoFocus={index === 0 && pendingFocusFirstChannel > 0}
         secondaryIconName={favoriteIds.has(item.id) ? 'heart' : 'heart-outline'}
         secondaryIconColor={favoriteIds.has(item.id) ? '#ec4899' : '#6e6e7d'}
       />
@@ -336,8 +388,14 @@ export function LiveScreen() {
       onChannelFocusKey,
       clearFocusedKey,
       playerFocusNodeHandle,
+      categoriesHeaderHandle,
+      clearFilterHeaderHandle,
+      hasCategoryFilter,
+      contentMode,
+      activeModeHandle,
       fullscreen,
       playerControlsFocused,
+      pendingFocusFirstChannel,
     ]
   );
 
@@ -373,14 +431,7 @@ export function LiveScreen() {
             const nextId = item.id === '__all__' ? null : item.id;
             setCategoryId(nextId);
             setCategoriesExpanded(false);
-            // After picker closes, explicitly move focus to a stable header node
-            setTimeout(() => {
-              if (nextId && clearFilterHeaderRef.current) {
-                focusRef(clearFilterHeaderRef);
-              } else if (categoriesHeaderRef.current) {
-                focusRef(categoriesHeaderRef);
-              }
-            }, 0);
+            setPendingFocusFirstChannel((v) => v + 1);
           }}
           onFocusKey={setFocusedKeyStable}
           onBlurKey={clearFocusedKey}
@@ -396,7 +447,6 @@ export function LiveScreen() {
       clearFocusedKey,
       setCategoryId,
       fullscreen,
-      focusRef,
     ]
   );
 
@@ -466,6 +516,25 @@ export function LiveScreen() {
         </View>
       )}
 
+      <ContentModeTabs
+        mode={contentMode}
+        focusedKey={focusedKey}
+        fullscreen={fullscreen}
+        onFocusKey={setFocusedKeyStable}
+        onBlurKey={clearFocusedKey}
+        onTabHandle={(mode, handle) => {
+          if (mode === 'all') setModeAllHandle(handle);
+          else if (mode === 'favorites') setModeFavoritesHandle(handle);
+          else setModeRecentHandle(handle);
+        }}
+        onSelect={(mode) => {
+          setContentMode(mode);
+          setCategoriesExpanded(false);
+          setFocusedKey(`mode-${mode}`);
+          setPendingFocusFirstChannel((v) => v + 1);
+        }}
+      />
+
       {/* Search only – Sync is in Settings to avoid blocking Live */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#272732' }}>
         <DebouncedSearchInput
@@ -482,7 +551,11 @@ export function LiveScreen() {
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#272732' }}>
         <Text className="text-zinc-300 text-xs">
-          Category: <Text className="text-white">{selectedCategoryName}</Text>
+          {contentMode === 'all' ? (
+            <>Category: <Text className="text-white">{selectedCategoryName}</Text></>
+          ) : (
+            <>Mode: <Text className="text-white">{contentMode === 'favorites' ? 'Favorites' : 'Recent'}</Text></>
+          )}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           {showSearchResults ? (
@@ -491,12 +564,15 @@ export function LiveScreen() {
             </Text>
           ) : (
             <Text className="text-zinc-300 text-xs">
-              Channels: <Text className="text-white">{channels.length}</Text>
+              Channels: <Text className="text-white">{activeModeChannels.length}</Text>
             </Text>
           )}
           {hasCategoryFilter && (
             <Pressable
-              ref={clearFilterHeaderRef}
+              ref={(node) => {
+                clearFilterHeaderRef.current = node;
+                setClearFilterHeaderHandle(node ? findNodeHandle(node) : null);
+              }}
               onPress={clearCategoryFilter}
               onFocus={() => setFocusedKey('category-filter-clear-header')}
               onBlur={clearFocusedKey}
@@ -517,8 +593,8 @@ export function LiveScreen() {
         </View>
       </View>
 
-      {/* Categories: scalable picker (works better with very many categories) */}
-      {categories.length > 0 && (
+      {/* Categories: scalable picker (works better with very many categories) – only in 'all' mode */}
+      {contentMode === 'all' && categories.length > 0 && (
         <View style={{ borderBottomWidth: 1, borderBottomColor: '#272732' }}>
           <Pressable
             ref={(node) => {
@@ -540,9 +616,13 @@ export function LiveScreen() {
               borderWidth: focusedKey === 'categories-toggle' ? 2 : 0,
               borderColor: '#d8b4fe',
             }}
-            {...(categoryFilterHandle != null
-              ? ({ nextFocusDown: categoryFilterHandle } as { nextFocusDown: number })
-              : {})}
+            {...(
+              displayChannels.length === 0 && hasCategoryFilter && emptyStateActionHandle != null
+                ? ({ nextFocusDown: emptyStateActionHandle } as { nextFocusDown: number })
+                : categoryFilterHandle != null
+                  ? ({ nextFocusDown: categoryFilterHandle } as { nextFocusDown: number })
+                  : {}
+            )}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Text className="text-white font-medium">Categories</Text>
@@ -616,7 +696,11 @@ export function LiveScreen() {
           description={
             showSearchResults
               ? `No result in "${selectedCategoryName}" for "${debouncedSearchQuery}".`
-              : `No channels in "${selectedCategoryName}" yet. Sync provider in Settings.`
+              : contentMode === 'favorites'
+                ? 'No favorite channels yet. Add favorites from the list using the heart icon.'
+                : contentMode === 'recent'
+                  ? 'No recent channels yet. Start playback to populate recent items.'
+                  : `No channels in "${selectedCategoryName}" yet. Sync provider in Settings.`
           }
           actionLabel={hasCategoryFilter ? 'Clear category filter' : undefined}
           onActionPress={hasCategoryFilter ? clearCategoryFilter : undefined}
@@ -624,7 +708,8 @@ export function LiveScreen() {
           focusedKey={focusedKey}
           onFocusKey={setFocusedKeyStable}
           onBlurKey={clearFocusedKey}
-          nextFocusUp={categoriesHeaderHandle}
+          nextFocusUp={contentMode === 'all' ? categoriesHeaderHandle : activeModeHandle}
+          onActionNodeHandle={setEmptyStateActionHandle}
         />
       ) : (
         <FlatList

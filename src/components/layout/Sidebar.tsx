@@ -6,8 +6,8 @@ import { usePlayer } from '../../context/PlayerContext';
 
 const navItems = [
   { name: 'Live', route: 'Live', icon: 'television' as const },
-  { name: 'Favs', route: 'Favorites', icon: 'heart' as const },
-  { name: 'Recent', route: 'Recent', icon: 'clock-outline' as const },
+  { name: 'Movies', route: 'Movies', icon: 'movie-open-outline' as const },
+  { name: 'Series', route: 'Series', icon: 'television-classic' as const },
   { name: 'Settings', route: 'Settings', icon: 'cog' as const },
 ] as const;
 

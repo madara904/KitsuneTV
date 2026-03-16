@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 import { providerService } from '../services/providerService';
 import { liveService } from '../services/liveService';
+import { mediaService } from '../services/mediaService';
 import type { Provider } from '../lib/types';
 
 export function useProviders() {
@@ -17,6 +18,7 @@ export function useProviders() {
     setSyncingId(providerId);
     try {
       await liveService.syncProvider(providerId);
+      await mediaService.syncProvider(providerId);
       await refresh();
     } catch (e) {
       Alert.alert('Sync failed', String(e));

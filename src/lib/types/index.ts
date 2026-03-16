@@ -51,3 +51,22 @@ export interface RecentChannel {
   channelId: string;
   watchedAt: number;
 }
+
+export interface Movie {
+  id: string;
+  providerId: string;
+  categoryId: string;
+  name: string;
+  poster?: string;
+  streamUrl?: string;
+}
+
+export interface SeriesItem {
+  id: string;
+  providerId: string;
+  categoryId: string;
+  name: string;
+  poster?: string;
+}
+
+export type MediaContentType = 'movie' | 'series';

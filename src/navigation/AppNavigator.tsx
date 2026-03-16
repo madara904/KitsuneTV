@@ -5,8 +5,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Sidebar } from '../components/layout/Sidebar';
 import { PlayerColumn } from '../components/player/PlayerColumn';
 import { LiveScreen } from '../screens/LiveScreen';
-import { FavoritesScreen } from '../screens/FavoritesScreen';
-import { RecentScreen } from '../screens/RecentScreen';
+import { MoviesScreen } from '../screens/MoviesScreen';
+import { SeriesScreen } from '../screens/SeriesScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { PlayerProvider, usePlayer } from '../context/PlayerContext';
 
@@ -27,8 +27,8 @@ function Layout() {
           }}
         >
           <Stack.Screen name="Live" component={LiveScreen} />
-          <Stack.Screen name="Favorites" component={FavoritesScreen} />
-          <Stack.Screen name="Recent" component={RecentScreen} />
+          <Stack.Screen name="Movies" component={MoviesScreen} />
+          <Stack.Screen name="Series" component={SeriesScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
         </Stack.Navigator>
       </View>

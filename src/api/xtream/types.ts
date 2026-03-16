@@ -32,3 +32,18 @@ export interface XtreamShortEpgResponse {
     description?: string;
   }>;
 }
+
+export interface XtreamVodStream {
+  stream_id: number;
+  name: string;
+  category_id?: string;
+  stream_icon?: string;
+  container_extension?: string;
+}
+
+export interface XtreamSeriesItem {
+  series_id: number;
+  name: string;
+  category_id?: string;
+  cover?: string;
+}
