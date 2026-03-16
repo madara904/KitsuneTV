@@ -446,7 +446,10 @@ export function LiveScreen() {
           label={item.name}
           isSelected={isSelected}
           isFocused={focusedKey === focusKey}
-          onSelect={() => setCategoryId(item.id === '__all__' ? null : item.id)}
+          onSelect={() => {
+            setCategoryId(item.id === '__all__' ? null : item.id);
+            setCategoriesExpanded(false);
+          }}
           onFocusKey={setFocusedKeyStable}
           onBlurKey={clearFocusedKey}
           compact={false}
