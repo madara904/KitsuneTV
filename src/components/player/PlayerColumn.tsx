@@ -29,9 +29,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Video, { type VideoRef } from 'react-native-video';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { usePlayer } from '../../context/PlayerContext';
 import { recentRepo } from '../../db/repositories/recentRepo';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const PLAYER_WIDTH = 380;
 const CONTROLS_HIDE_DELAY_MS = 3000;

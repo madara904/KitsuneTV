@@ -6,7 +6,6 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
-  Image,
   findNodeHandle,
   type ListRenderItemInfo,
 } from 'react-native';
@@ -18,6 +17,8 @@ import { channelRepo } from '../db/repositories/channelRepo';
 import { favoriteRepo } from '../db/repositories/favoriteRepo';
 import { usePlayer } from '../context/PlayerContext';
 import type { Provider, Channel, Category } from '../lib/types';
+import { ChannelListItem } from '../components/channel/ChannelListItem';
+import { EmptyState } from '../components/common/EmptyState';
 
 const SEARCH_DEBOUNCE_MS = 700;
 const SEARCH_LIMIT = 50;
@@ -130,111 +131,6 @@ const CategoryPill = memo(function CategoryPill({
   );
 });
 
-const ChannelRow = memo(function ChannelRow({
-  item,
-  isFocused,
-  isHeartFocused,
-  isFav,
-  isNowPlaying,
-  onPress,
-  onFavorite,
-  onFocusKey,
-  onBlurKey,
-  nextFocusRight,
-  focusable,
-}: {
-  item: Channel;
-  isFocused: boolean;
-  isHeartFocused: boolean;
-  isFav: boolean;
-  isNowPlaying: boolean;
-  onPress: (ch: Channel) => void;
-  onFavorite: (id: string) => void;
-  onFocusKey: (k: string) => void;
-  onBlurKey: () => void;
-  /** Android TV: node handle of player first focusable so D-pad Right goes to player */
-  nextFocusRight?: number | null;
-  focusable?: boolean;
-}) {
-  const rowRef = useRef<React.ComponentRef<typeof Pressable>>(null);
-  const heartRef = useRef<React.ComponentRef<typeof Pressable>>(null);
-
-  // setNativeProps ensures nextFocusRight is applied on Android (prop alone can be lost with FlatList recycling)
-  useEffect(() => {
-    if (nextFocusRight == null) return;
-    const refs = [rowRef.current, heartRef.current];
-    refs.forEach((r) => {
-      if (r?.setNativeProps) {
-        try {
-          r.setNativeProps({ nextFocusRight });
-        } catch {
-          // ignore if unmounted
-        }
-      }
-    });
-  }, [nextFocusRight]);
-
-  return (
-    <Pressable
-      ref={rowRef}
-      onPress={() => onPress(item)}
-      onLongPress={() => onFavorite(item.id)}
-      onFocus={() => onFocusKey(`channel-${item.id}`)}
-      onBlur={onBlurKey}
-      {...(nextFocusRight != null ? { nextFocusRight } as { nextFocusRight: number } : {})}
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        height: CHANNEL_ROW_HEIGHT,
-        paddingHorizontal: 16,
-        gap: 12,
-        backgroundColor: isNowPlaying ? 'rgba(139, 92, 246, 0.12)' : 'transparent',
-        borderWidth: isFocused ? 3 : 0,
-        borderColor: '#d8b4fe',
-      }}
-      focusable={focusable !== false}
-    >
-      {item.logo ? (
-        <Image source={{ uri: item.logo }} style={{ width: 40, height: 40, borderRadius: 8, backgroundColor: '#272732' }} resizeMode="cover" />
-      ) : (
-        <View style={{ width: 40, height: 40, borderRadius: 8, backgroundColor: '#272732', alignItems: 'center', justifyContent: 'center' }}>
-          <MaterialCommunityIcons name="television" size={22} color="#6e6e7d" />
-        </View>
-      )}
-      <View style={{ flex: 1 }}>
-        <Text className="text-white text-base font-medium" numberOfLines={1}>{item.name}</Text>
-        {isNowPlaying && (
-          <Text style={{ color: '#a78bfa', fontSize: 12, marginTop: 2 }}>Jetzt läuft</Text>
-        )}
-      </View>
-      <Pressable
-        ref={heartRef}
-        onPress={() => onFavorite(item.id)}
-        onFocus={() => onFocusKey(`channel-fav-${item.id}`)}
-        onBlur={onBlurKey}
-        {...(nextFocusRight != null ? { nextFocusRight } as { nextFocusRight: number } : {})}
-        style={{
-          width: 40,
-          height: 40,
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderWidth: isHeartFocused ? 2 : 0,
-          borderColor: '#d8b4fe',
-          borderRadius: 8,
-        }}
-        focusable={focusable !== false}
-        hitSlop={8}
-      >
-        <MaterialCommunityIcons
-          name={isFav ? 'heart' : 'heart-outline'}
-          size={22}
-          color={isFav ? '#ec4899' : '#6e6e7d'}
-        />
-      </Pressable>
-    </Pressable>
-  );
-});
-
 export function LiveScreen() {
   const navigation = useNavigation<any>();
   const { currentChannel, setCurrentChannel, playerFocusNodeHandle, fullscreen, playerControlsFocused, setPlayerControlsFocused } = usePlayer();
@@ -255,6 +151,9 @@ export function LiveScreen() {
   const searchVersionRef = useRef(0);
   const categoryListRef = useRef<FlatList<CategoryListItem>>(null);
   const categoryFilterRef = useRef<TextInput | null>(null);
+  const clearFilterHeaderRef = useRef<React.ComponentRef<typeof Pressable> | null>(null);
+  const categoriesHeaderRef = useRef<React.ComponentRef<typeof Pressable> | null>(null);
+  const [categoriesHeaderHandle, setCategoriesHeaderHandle] = useState<number | null>(null);
 
   /** Keep category navigation stable and independent from channel search query. */
   const allCategoryListData = useMemo<CategoryListItem[]>(() => {
@@ -271,6 +170,8 @@ export function LiveScreen() {
     if (!selectedCategoryId) return 'All';
     return categories.find((c) => c.id === selectedCategoryId)?.name ?? 'All';
   }, [categories, selectedCategoryId]);
+
+  const hasCategoryFilter = selectedCategoryId !== null;
 
   const showSearchResults = debouncedSearchQuery.length >= MIN_SEARCH_LENGTH;
   const displayChannels = showSearchResults ? searchResults : channels;
@@ -395,27 +296,49 @@ export function LiveScreen() {
   const clearFocusedKey = useCallback(() => setFocusedKey(null), []);
   const setCategoryId = useCallback((id: string | null) => setSelectedCategoryId(id), []);
 
+  const clearCategoryFilter = useCallback(() => {
+    setSelectedCategoryId(null);
+    setCategoriesExpanded(false);
+  }, []);
+
+  const focusRef = useCallback((ref: React.RefObject<React.ComponentRef<typeof Pressable> | null>) => {
+    const node = ref.current as unknown as { focus?: () => void } | null;
+    node?.focus?.();
+  }, []);
+
   const handleSearchChange = useCallback((query: string) => {
     setDebouncedSearchQuery(query);
   }, []);
 
   const renderChannelItem = useCallback(
     ({ item }: ListRenderItemInfo<Channel>) => (
-      <ChannelRow
-        item={item}
+      <ChannelListItem
+        channel={item}
         isFocused={focusedKey === `channel-${item.id}` && !playerControlsFocused}
-        isHeartFocused={focusedKey === `channel-fav-${item.id}` && !playerControlsFocused}
-        isFav={favoriteIds.has(item.id)}
+        isSecondaryFocused={focusedKey === `channel-secondary-${item.id}` && !playerControlsFocused}
         isNowPlaying={currentChannel?.id === item.id}
         onPress={openPlayer}
-        onFavorite={toggleFavorite}
+        onSecondaryPress={toggleFavorite}
         onFocusKey={onChannelFocusKey}
         onBlurKey={clearFocusedKey}
         nextFocusRight={playerFocusNodeHandle}
         focusable={!fullscreen}
+        secondaryIconName={favoriteIds.has(item.id) ? 'heart' : 'heart-outline'}
+        secondaryIconColor={favoriteIds.has(item.id) ? '#ec4899' : '#6e6e7d'}
       />
     ),
-    [focusedKey, favoriteIds, currentChannel?.id, openPlayer, toggleFavorite, onChannelFocusKey, clearFocusedKey, playerFocusNodeHandle, fullscreen, playerControlsFocused]
+    [
+      focusedKey,
+      favoriteIds,
+      currentChannel?.id,
+      openPlayer,
+      toggleFavorite,
+      onChannelFocusKey,
+      clearFocusedKey,
+      playerFocusNodeHandle,
+      fullscreen,
+      playerControlsFocused,
+    ]
   );
 
   const getItemLayout = useCallback(
@@ -447,8 +370,17 @@ export function LiveScreen() {
           isSelected={isSelected}
           isFocused={focusedKey === focusKey}
           onSelect={() => {
-            setCategoryId(item.id === '__all__' ? null : item.id);
+            const nextId = item.id === '__all__' ? null : item.id;
+            setCategoryId(nextId);
             setCategoriesExpanded(false);
+            // After picker closes, explicitly move focus to a stable header node
+            setTimeout(() => {
+              if (nextId && clearFilterHeaderRef.current) {
+                focusRef(clearFilterHeaderRef);
+              } else if (categoriesHeaderRef.current) {
+                focusRef(categoriesHeaderRef);
+              }
+            }, 0);
           }}
           onFocusKey={setFocusedKeyStable}
           onBlurKey={clearFocusedKey}
@@ -457,7 +389,15 @@ export function LiveScreen() {
         />
       );
     },
-    [selectedCategoryId, focusedKey, setFocusedKeyStable, clearFocusedKey, setCategoryId, fullscreen]
+    [
+      selectedCategoryId,
+      focusedKey,
+      setFocusedKeyStable,
+      clearFocusedKey,
+      setCategoryId,
+      fullscreen,
+      focusRef,
+    ]
   );
 
   if (loading && providers.length === 0) {
@@ -541,18 +481,50 @@ export function LiveScreen() {
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#272732' }}>
-        <Text className="text-zinc-300 text-xs">Category: <Text className="text-white">{selectedCategoryName}</Text></Text>
-        {showSearchResults ? (
-          <Text className="text-zinc-300 text-xs">Search results: <Text className="text-white">{searchResults.length}</Text></Text>
-        ) : (
-          <Text className="text-zinc-300 text-xs">Channels: <Text className="text-white">{channels.length}</Text></Text>
-        )}
+        <Text className="text-zinc-300 text-xs">
+          Category: <Text className="text-white">{selectedCategoryName}</Text>
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {showSearchResults ? (
+            <Text className="text-zinc-300 text-xs">
+              Search results: <Text className="text-white">{searchResults.length}</Text>
+            </Text>
+          ) : (
+            <Text className="text-zinc-300 text-xs">
+              Channels: <Text className="text-white">{channels.length}</Text>
+            </Text>
+          )}
+          {hasCategoryFilter && (
+            <Pressable
+              ref={clearFilterHeaderRef}
+              onPress={clearCategoryFilter}
+              onFocus={() => setFocusedKey('category-filter-clear-header')}
+              onBlur={clearFocusedKey}
+              focusable={!fullscreen}
+              style={{
+                marginLeft: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 999,
+                borderWidth: focusedKey === 'category-filter-clear-header' ? 3 : 1,
+                borderColor: '#d8b4fe',
+                backgroundColor: 'rgba(139, 92, 246, 0.25)',
+              }}
+            >
+              <Text className="text-white text-xs">Clear filter</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {/* Categories: scalable picker (works better with very many categories) */}
       {categories.length > 0 && (
         <View style={{ borderBottomWidth: 1, borderBottomColor: '#272732' }}>
           <Pressable
+            ref={(node) => {
+              categoriesHeaderRef.current = node;
+              setCategoriesHeaderHandle(node ? findNodeHandle(node) : null);
+            }}
             onPress={() => setCategoriesExpanded((e) => !e)}
             onFocus={() => setFocusedKey('categories-toggle')}
             onBlur={clearFocusedKey}
@@ -638,15 +610,22 @@ export function LiveScreen() {
           <ActivityIndicator size="large" color="#8b5cf6" />
         </View>
       ) : displayChannels.length === 0 ? (
-        <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: 24 }}>
-          <MaterialCommunityIcons name="television-off" size={54} color="#52525b" />
-          <Text className="text-white text-base mt-4">No channels found</Text>
-          <Text className="text-zinc-400 text-center mt-1">
-            {showSearchResults
+        <EmptyState
+          iconName="television-off"
+          title="No channels found"
+          description={
+            showSearchResults
               ? `No result in "${selectedCategoryName}" for "${debouncedSearchQuery}".`
-              : `No channels in "${selectedCategoryName}" yet. Sync provider in Settings.`}
-          </Text>
-        </View>
+              : `No channels in "${selectedCategoryName}" yet. Sync provider in Settings.`
+          }
+          actionLabel={hasCategoryFilter ? 'Clear category filter' : undefined}
+          onActionPress={hasCategoryFilter ? clearCategoryFilter : undefined}
+          focusKey={hasCategoryFilter ? 'category-filter-clear-empty' : undefined}
+          focusedKey={focusedKey}
+          onFocusKey={setFocusedKeyStable}
+          onBlurKey={clearFocusedKey}
+          nextFocusUp={categoriesHeaderHandle}
+        />
       ) : (
         <FlatList
           data={displayChannels}
