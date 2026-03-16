@@ -16,13 +16,13 @@ export function RecentScreen() {
   const load = useCallback(async () => {
     const recents = await recentRepo.list(RECENT_LIMIT);
     const seen = new Set<string>();
-    const chs: Channel[] = [];
+    const ids: string[] = [];
     for (const r of recents) {
       if (seen.has(r.channelId)) continue;
       seen.add(r.channelId);
-      const ch = await channelRepo.get(r.channelId);
-      if (ch) chs.push(ch);
     }
+    ids.push(...seen);
+    const chs = await channelRepo.getMany(ids);
     setChannels(chs);
   }, []);
 
@@ -35,6 +35,8 @@ export function RecentScreen() {
   const openPlayer = useCallback((channel: Channel) => {
     setCurrentChannel(channel);
   }, [setCurrentChannel]);
+
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   if (channels.length === 0) {
     return (
@@ -55,8 +57,15 @@ export function RecentScreen() {
         renderItem={({ item }) => (
           <Pressable
             onPress={() => openPlayer(item)}
-            className="flex-row items-center gap-4 py-3 px-4 rounded-xl border border-transparent"
+            className="flex-row items-center gap-4 py-3 px-4 rounded-xl border"
             focusable
+            onFocus={() => setFocusedId(item.id)}
+            onBlur={() => setFocusedId((prev) => (prev === item.id ? null : prev))}
+            style={{
+              borderWidth:  focusedId === item.id ? 3 : 1,
+              borderColor:  focusedId === item.id ? '#d8b4fe' : 'transparent',
+              backgroundColor: focusedId === item.id ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+            }}
           >
             {item.logo ? (
               <Image source={{ uri: item.logo }} className="w-12 h-12 rounded-lg bg-surface-700" resizeMode="cover" />

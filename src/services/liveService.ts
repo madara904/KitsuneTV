@@ -94,7 +94,13 @@ export const liveService = {
       for (const ch of parsed) {
         const group = ch.groupTitle ?? '';
         if (!groupToId.has(group)) {
-          const id = `${providerId}_cat_${group.replace(/\s+/g, '_').slice(0, 30)}`;
+          // Use a short hash over the original group title to avoid ID collisions
+          const normalized = group || 'general';
+          let hash = 0;
+          for (let i = 0; i < normalized.length; i++) {
+            hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+          }
+          const id = `${providerId}_cat_${hash.toString(16)}`;
           groupToId.set(group, id);
           categories.push({ id, providerId, name: group || 'General' });
         }

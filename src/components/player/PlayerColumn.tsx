@@ -401,15 +401,12 @@ export function PlayerColumn() {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: 'center',
           padding: 12,
           backgroundColor: 'rgba(0,0,0,0.7)',
         }}
         focusable={false}
       >
-        <Text style={{ color: '#fff', fontSize: 14, flex: 1 }} numberOfLines={1}>
-          {currentChannel.name}
-        </Text>
         <View style={{ flexDirection: 'row', gap: 8 }} focusable={false}>
           <Pressable
             ref={capturePlayRef}
@@ -466,28 +463,21 @@ export function PlayerColumn() {
               color="#fff"
             />
           </Pressable>
-          <Pressable
-            ref={captureCloseRef}
-            focusable={!fullscreen || controlsVisible}
-            onPress={() => setCurrentChannel(null)}
-            onFocus={() => {
-              setFocusedBtn('close');
-              setPlayerControlsFocused(true);
-              if (fullscreen) showControls();
-            }}
-            onBlur={() => { setFocusedBtn(null); setPlayerControlsFocused(false); }}
-            style={btnStyle(focusedBtn === 'close')}
-            {...(fullscreen && controlsVisible && playHandle != null && fullscreenHandle != null && closeHandle != null
-              ? ({
-                  nextFocusLeft: fullscreenHandle,
-                  nextFocusRight: playHandle,
-                  nextFocusUp: closeHandle,
-                  nextFocusDown: closeHandle,
-                } as Record<string, number>)
-              : {})}
-          >
-            <MaterialCommunityIcons name="close" size={22} color="#fff" />
-          </Pressable>
+          {!fullscreen && (
+            <Pressable
+              ref={captureCloseRef}
+              focusable
+              onPress={() => setCurrentChannel(null)}
+              onFocus={() => {
+                setFocusedBtn('close');
+                setPlayerControlsFocused(true);
+              }}
+              onBlur={() => { setFocusedBtn(null); setPlayerControlsFocused(false); }}
+              style={btnStyle(focusedBtn === 'close')}
+            >
+              <MaterialCommunityIcons name="close" size={22} color="#fff" />
+            </Pressable>
+          )}
         </View>
       </View>
     </View>
@@ -533,21 +523,12 @@ export function PlayerColumn() {
         focusable={false}
       >
         {fullscreen ? (
-          controlsVisible ? (
-            <>
-              {controlsBar}
-              {fullscreenOverlay}
-              <Video {...videoProps} />
-              {errorOverlay}
-            </>
-          ) : (
-            <>
-              {fullscreenOverlay}
-              {controlsBar}
-              <Video {...videoProps} />
-              {errorOverlay}
-            </>
-          )
+          <>
+            {fullscreenOverlay}
+            {controlsBar}
+            <Video {...videoProps} />
+            {errorOverlay}
+          </>
         ) : (
           <>
             <Video {...videoProps} />

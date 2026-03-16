@@ -76,4 +76,15 @@ export const channelRepo = {
     const rows = res.rows?._array ?? [];
     return rows.length ? toChannel(rows[0]) : null;
   },
+
+  async getMany(ids: string[]): Promise<Channel[]> {
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => '?').join(', ');
+    const res = await getDb().executeAsync(
+      `SELECT id, provider_id, category_id, name, logo, stream_url, stream_type, epg_channel_id FROM channels WHERE id IN (${placeholders})`,
+      ids
+    );
+    const rows = res.rows?._array ?? [];
+    return rows.map(toChannel);
+  },
 };

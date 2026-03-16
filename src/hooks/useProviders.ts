@@ -35,8 +35,12 @@ export function useProviders() {
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
-            await providerService.remove(p.id);
-            await refresh();
+            try {
+              await providerService.remove(p.id);
+              await refresh();
+            } catch (e) {
+              Alert.alert('Remove failed', String(e));
+            }
           },
         },
       ]
