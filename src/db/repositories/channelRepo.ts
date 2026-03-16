@@ -58,12 +58,22 @@ export const channelRepo = {
     getDb().execute('DELETE FROM channels WHERE provider_id = ?', [providerId]);
   },
 
-  async search(providerId: string, query: string, limit: number): Promise<Channel[]> {
+  async search(
+    providerId: string,
+    query: string,
+    limit: number,
+    categoryId?: string,
+  ): Promise<Channel[]> {
     const q = `%${query}%`;
-    const res = await getDb().executeAsync(
-      'SELECT id, provider_id, category_id, name, logo, stream_url, stream_type, epg_channel_id FROM channels WHERE provider_id = ? AND name LIKE ? ORDER BY name LIMIT ?',
-      [providerId, q, limit]
-    );
+    const res = categoryId
+      ? await getDb().executeAsync(
+          'SELECT id, provider_id, category_id, name, logo, stream_url, stream_type, epg_channel_id FROM channels WHERE provider_id = ? AND category_id = ? AND name LIKE ? ORDER BY name LIMIT ?',
+          [providerId, categoryId, q, limit],
+        )
+      : await getDb().executeAsync(
+          'SELECT id, provider_id, category_id, name, logo, stream_url, stream_type, epg_channel_id FROM channels WHERE provider_id = ? AND name LIKE ? ORDER BY name LIMIT ?',
+          [providerId, q, limit],
+        );
     const rows = res.rows?._array ?? [];
     return rows.map(toChannel);
   },

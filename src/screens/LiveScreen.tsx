@@ -7,6 +7,7 @@ import {
   TextInput,
   ActivityIndicator,
   Image,
+  findNodeHandle,
   type ListRenderItemInfo,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -22,10 +23,9 @@ const SEARCH_DEBOUNCE_MS = 700;
 const SEARCH_LIMIT = 50;
 const MIN_SEARCH_LENGTH = 2;
 const CHANNEL_ROW_HEIGHT = 60;
-const CATEGORY_PILL_WIDTH = 140;
 const CATEGORY_PILL_HEIGHT = 40;
-const CATEGORY_LIST_INITIAL_RENDER = 12;
-const CATEGORY_LIST_WINDOW = 5;
+const CATEGORY_ROW_HEIGHT = 44;
+const CATEGORY_PICKER_MAX_HEIGHT = 320;
 
 // Search input that only notifies parent after debounce – avoids re-rendering whole screen on every key
 const DebouncedSearchInput = memo(function DebouncedSearchInput({
@@ -94,7 +94,7 @@ const CategoryPill = memo(function CategoryPill({
   onSelect,
   onFocusKey,
   onBlurKey,
-  width,
+  compact,
   focusable,
 }: {
   focusKey: string;
@@ -104,7 +104,7 @@ const CategoryPill = memo(function CategoryPill({
   onSelect: () => void;
   onFocusKey: (k: string) => void;
   onBlurKey: () => void;
-  width?: number;
+  compact?: boolean;
   focusable?: boolean;
 }) {
   return (
@@ -114,11 +114,10 @@ const CategoryPill = memo(function CategoryPill({
       onBlur={onBlurKey}
       focusable={focusable !== false}
       style={{
-        width: width ?? undefined,
-        minWidth: width ?? undefined,
-        height: CATEGORY_PILL_HEIGHT,
+        minHeight: CATEGORY_PILL_HEIGHT,
         paddingHorizontal: 14,
-        marginRight: 8,
+        marginRight: compact ? 8 : 0,
+        marginBottom: compact ? 0 : 8,
         borderRadius: 20,
         borderWidth: isFocused ? 3 : 1,
         borderColor: isFocused ? '#d8b4fe' : '#3f3f46',
@@ -251,19 +250,27 @@ export function LiveScreen() {
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
+  const [categoryFilterQuery, setCategoryFilterQuery] = useState('');
+  const [categoryFilterHandle, setCategoryFilterHandle] = useState<number | null>(null);
   const searchVersionRef = useRef(0);
   const categoryListRef = useRef<FlatList<CategoryListItem>>(null);
+  const categoryFilterRef = useRef<TextInput | null>(null);
 
-  /** Categories filtered by search (client-side). Same search box filters both categories and channels. */
+  /** Keep category navigation stable and independent from channel search query. */
+  const allCategoryListData = useMemo<CategoryListItem[]>(() => {
+    return [{ id: '__all__', name: 'All' }, ...categories.map((c) => ({ id: c.id, name: c.name }))];
+  }, [categories]);
+
   const categoryListData = useMemo<CategoryListItem[]>(() => {
-    const base = [{ id: '__all__', name: 'All' }, ...categories.map((c) => ({ id: c.id, name: c.name }))];
-    const q = debouncedSearchQuery.trim().toLowerCase();
-    if (!q) return base;
-    return [
-      { id: '__all__', name: 'All' },
-      ...categories.filter((c) => c.name.toLowerCase().includes(q)).map((c) => ({ id: c.id, name: c.name })),
-    ];
-  }, [categories, debouncedSearchQuery]);
+    const q = categoryFilterQuery.trim().toLowerCase();
+    if (!q) return allCategoryListData;
+    return allCategoryListData.filter((item) => item.id === '__all__' || item.name.toLowerCase().includes(q));
+  }, [allCategoryListData, categoryFilterQuery]);
+
+  const selectedCategoryName = useMemo(() => {
+    if (!selectedCategoryId) return 'All';
+    return categories.find((c) => c.id === selectedCategoryId)?.name ?? 'All';
+  }, [categories, selectedCategoryId]);
 
   const showSearchResults = debouncedSearchQuery.length >= MIN_SEARCH_LENGTH;
   const displayChannels = showSearchResults ? searchResults : channels;
@@ -310,6 +317,13 @@ export function LiveScreen() {
     if (selectedProviderId) loadData();
   }, [selectedProviderId, selectedCategoryId, loadData]);
 
+  useEffect(() => {
+    if (!selectedCategoryId) return;
+    if (!categories.some((c) => c.id === selectedCategoryId)) {
+      setSelectedCategoryId(null);
+    }
+  }, [categories, selectedCategoryId]);
+
   // Run DB search when debounced query changes. Deferred with setTimeout so UI stays responsive.
   // InteractionManager deprecation in console comes from React Navigation (useFocusEffect), not from this screen.
   useEffect(() => {
@@ -323,7 +337,7 @@ export function LiveScreen() {
     let cancelled = false;
     const t = setTimeout(() => {
       if (cancelled || version !== searchVersionRef.current) return;
-      channelRepo.search(selectedProviderId, debouncedSearchQuery, SEARCH_LIMIT).then((results) => {
+      channelRepo.search(selectedProviderId, debouncedSearchQuery, SEARCH_LIMIT, selectedCategoryId ?? undefined).then((results) => {
         if (cancelled || version !== searchVersionRef.current) return;
         setSearchResults(results);
         setSearching(false);
@@ -335,7 +349,7 @@ export function LiveScreen() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [debouncedSearchQuery, selectedProviderId]);
+  }, [debouncedSearchQuery, selectedProviderId, selectedCategoryId]);
 
   // Scroll category list so focused pill is visible (virtualized list = only ~12 pills mounted → less lag)
   useEffect(() => {
@@ -367,6 +381,7 @@ export function LiveScreen() {
   const setProvider = useCallback((id: string) => {
     setSelectedProviderId(id);
     setSelectedCategoryId(null);
+    setCategoryFilterQuery('');
   }, []);
 
   const setFocusedKeyStable = useCallback((k: string) => setFocusedKey(k), []);
@@ -414,8 +429,8 @@ export function LiveScreen() {
 
   const getCategoryItemLayout = useCallback(
     (_: unknown, index: number) => ({
-      length: CATEGORY_PILL_WIDTH + 8,
-      offset: (CATEGORY_PILL_WIDTH + 8) * index,
+      length: CATEGORY_ROW_HEIGHT,
+      offset: CATEGORY_ROW_HEIGHT * index,
       index,
     }),
     []
@@ -434,7 +449,7 @@ export function LiveScreen() {
           onSelect={() => setCategoryId(item.id === '__all__' ? null : item.id)}
           onFocusKey={setFocusedKeyStable}
           onBlurKey={clearFocusedKey}
-          width={CATEGORY_PILL_WIDTH}
+          compact={false}
           focusable={!fullscreen}
         />
       );
@@ -511,7 +526,7 @@ export function LiveScreen() {
       {/* Search only – Sync is in Settings to avoid blocking Live */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#272732' }}>
         <DebouncedSearchInput
-          placeholder="Kanäle & Kategorien suchen..."
+          placeholder="Kanäle suchen..."
           onSearchChange={handleSearchChange}
           minLength={MIN_SEARCH_LENGTH}
           debounceMs={SEARCH_DEBOUNCE_MS}
@@ -522,7 +537,16 @@ export function LiveScreen() {
         />
       </View>
 
-      {/* Categories – horizontal virtualized list: only ~12 pills mounted → no lag (like channel list) */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#272732' }}>
+        <Text className="text-zinc-300 text-xs">Category: <Text className="text-white">{selectedCategoryName}</Text></Text>
+        {showSearchResults ? (
+          <Text className="text-zinc-300 text-xs">Search results: <Text className="text-white">{searchResults.length}</Text></Text>
+        ) : (
+          <Text className="text-zinc-300 text-xs">Channels: <Text className="text-white">{channels.length}</Text></Text>
+        )}
+      </View>
+
+      {/* Categories: scalable picker (works better with very many categories) */}
       {categories.length > 0 && (
         <View style={{ borderBottomWidth: 1, borderBottomColor: '#272732' }}>
           <Pressable
@@ -533,6 +557,7 @@ export function LiveScreen() {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
+              justifyContent: 'space-between',
               paddingHorizontal: 16,
               paddingVertical: 12,
               gap: 6,
@@ -540,26 +565,67 @@ export function LiveScreen() {
               borderWidth: focusedKey === 'categories-toggle' ? 2 : 0,
               borderColor: '#d8b4fe',
             }}
-          >
-            <Text className="text-white font-medium">Categories</Text>
-            <MaterialCommunityIcons name={categoriesExpanded ? 'chevron-up' : 'chevron-down'} size={20} color="#9ca3af" />
-          </Pressable>
-          {categoriesExpanded && (
-            <FlatList<CategoryListItem>
-              ref={categoryListRef}
-              data={categoryListData}
-              keyExtractor={(item) => item.id}
-              renderItem={renderCategoryItem}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              getItemLayout={getCategoryItemLayout}
-              initialNumToRender={CATEGORY_LIST_INITIAL_RENDER}
-              windowSize={CATEGORY_LIST_WINDOW}
-              maxToRenderPerBatch={8}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 4 }}
-              onScrollToIndexFailed={() => {}}
-            />
-          )}
+            {...(categoryFilterHandle != null
+              ? ({ nextFocusDown: categoryFilterHandle } as { nextFocusDown: number })
+              : {})}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text className="text-white font-medium">Categories</Text>
+                <Text className="text-zinc-400 text-xs">({categories.length + 1})</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text className="text-zinc-300 text-xs" numberOfLines={1}>{selectedCategoryName}</Text>
+                <MaterialCommunityIcons name={categoriesExpanded ? 'chevron-up' : 'chevron-down'} size={20} color="#9ca3af" />
+              </View>
+            </Pressable>
+            {categoriesExpanded && (
+              <View style={{ paddingHorizontal: 16, paddingTop: 6, paddingBottom: 10, gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, height: 38, paddingHorizontal: 12, borderRadius: 10, borderWidth: focusedKey === 'category-search' ? 3 : 1, borderColor: focusedKey === 'category-search' ? '#d8b4fe' : '#3f3f46', backgroundColor: '#1c1c24' }}>
+                  <MaterialCommunityIcons name="filter-variant" size={18} color="#6e6e7d" />
+                  <TextInput
+                    ref={(node) => {
+                      categoryFilterRef.current = node;
+                      setCategoryFilterHandle(node ? findNodeHandle(node) : null);
+                    }}
+                    className="flex-1 text-white text-sm p-0"
+                    placeholder="Kategorie filtern..."
+                    placeholderTextColor="#6e6e7d"
+                    value={categoryFilterQuery}
+                    onChangeText={setCategoryFilterQuery}
+                    onFocus={() => setFocusedKey('category-search')}
+                    onBlur={clearFocusedKey}
+                    focusable={!fullscreen}
+                    style={{ paddingVertical: 8, color: '#fff' }}
+                  />
+                  {categoryFilterQuery.length > 0 && (
+                    <Pressable
+                      onPress={() => setCategoryFilterQuery('')}
+                      onFocus={() => setFocusedKey('category-search-clear')}
+                      onBlur={clearFocusedKey}
+                      focusable={!fullscreen}
+                      style={{ paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, borderWidth: focusedKey === 'category-search-clear' ? 2 : 0, borderColor: '#d8b4fe' }}
+                    >
+                      <Text className="text-zinc-300 text-xs">Clear</Text>
+                    </Pressable>
+                  )}
+                </View>
+
+                <FlatList<CategoryListItem>
+                  ref={categoryListRef}
+                  data={categoryListData}
+                  keyExtractor={(item) => item.id}
+                  renderItem={renderCategoryItem}
+                  showsVerticalScrollIndicator
+                  getItemLayout={getCategoryItemLayout}
+                  initialNumToRender={16}
+                  windowSize={8}
+                  maxToRenderPerBatch={16}
+                  style={{ maxHeight: CATEGORY_PICKER_MAX_HEIGHT }}
+                  contentContainerStyle={{ paddingBottom: 2 }}
+                  onScrollToIndexFailed={() => {}}
+                />
+              </View>
+            )}
         </View>
       )}
 
@@ -567,6 +633,16 @@ export function LiveScreen() {
       {loading && channels.length === 0 ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#8b5cf6" />
+        </View>
+      ) : displayChannels.length === 0 ? (
+        <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: 24 }}>
+          <MaterialCommunityIcons name="television-off" size={54} color="#52525b" />
+          <Text className="text-white text-base mt-4">No channels found</Text>
+          <Text className="text-zinc-400 text-center mt-1">
+            {showSearchResults
+              ? `No result in "${selectedCategoryName}" for "${debouncedSearchQuery}".`
+              : `No channels in "${selectedCategoryName}" yet. Sync provider in Settings.`}
+          </Text>
         </View>
       ) : (
         <FlatList
