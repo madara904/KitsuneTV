@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, Text, View, Image } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { providerService } from '../services/providerService';
@@ -7,7 +7,7 @@ import { mediaService } from '../services/mediaService';
 import { mediaCollectionRepo } from '../db/repositories/mediaCollectionRepo';
 import { EmptyState } from '../components/common/EmptyState';
 import { ContentModeTabs, type ContentMode } from '../components/common/ContentModeTabs';
-import { DebouncedSearchInput } from '../components/common/DebouncedSearchInput';
+import { SearchInputWithButton } from '../components/common/DebouncedSearchInput';
 import type { Category, SeriesItem } from '../lib/types';
 
 const PAGE_SIZE = 40;
@@ -22,6 +22,7 @@ type SeriesRowProps = {
 
 const SeriesRow = memo(function SeriesRow({ item, isFavorite, onOpen, onToggleFavorite }: SeriesRowProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const posterUri = (item.poster ?? '').trim() || null;
 
   return (
     <Pressable
@@ -38,19 +39,27 @@ const SeriesRow = memo(function SeriesRow({ item, isFavorite, onOpen, onToggleFa
         backgroundColor: isFocused ? '#1b1b26' : 'transparent',
       }}
     >
-      <View
-        style={{
-          width: 42,
-          height: 42,
-          borderRadius: 8,
-          backgroundColor: '#272732',
-          marginRight: 12,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <MaterialCommunityIcons name="television-classic" size={20} color="#8b8ba0" />
-      </View>
+      {posterUri ? (
+        <Image
+          source={{ uri: posterUri }}
+          style={{ width: 42, height: 42, borderRadius: 8, marginRight: 12 }}
+          resizeMode="cover"
+        />
+      ) : (
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 8,
+            backgroundColor: '#272732',
+            marginRight: 12,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <MaterialCommunityIcons name="television-classic" size={20} color="#8b8ba0" />
+        </View>
+      )}
       <Text className="text-white flex-1" numberOfLines={1}>
         {item.name}
       </Text>
@@ -233,12 +242,7 @@ export function SeriesScreen() {
     <View className="flex-1" style={{ backgroundColor: '#0e0e12' }}>
       <ContentModeTabs mode={mode} fullscreen={false} onSelect={setMode} />
 
-      <DebouncedSearchInput
-        placeholder="Serien suchen..."
-        onSearchChange={setQuery}
-        minLength={2}
-        debounceMs={25}
-      />
+      <SearchInputWithButton placeholder="Serien suchen..." onSubmit={setQuery} />
 
       {categories.length > 0 && mode === 'all' && (
         <View style={{ height: 52, justifyContent: 'center' }}>
