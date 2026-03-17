@@ -1,8 +1,6 @@
 import { providerRepo } from '../db/repositories/providerRepo';
 import { categoryRepo } from '../db/repositories/categoryRepo';
 import { channelRepo } from '../db/repositories/channelRepo';
-import { favoriteRepo } from '../db/repositories/favoriteRepo';
-import { recentRepo } from '../db/repositories/recentRepo';
 import { setProviderCredentials, deleteProviderCredentials, getProviderCredentials } from '../lib/keychain';
 import type { Provider } from '../lib/types';
 

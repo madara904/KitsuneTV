@@ -18,15 +18,40 @@ export const movieRepo = {
     ]);
   },
 
-  async byProvider(providerId: string, categoryId?: string): Promise<Movie[]> {
+  async byProvider(
+    providerId: string,
+    categoryId?: string,
+    limit = 120,
+    offset = 0,
+  ): Promise<Movie[]> {
     const res = categoryId
       ? await getDb().executeAsync(
-          'SELECT id, provider_id, category_id, name, poster, stream_url FROM movies WHERE provider_id = ? AND category_id = ? ORDER BY name',
-          [providerId, categoryId],
+          'SELECT id, provider_id, category_id, name, poster, stream_url FROM movies WHERE provider_id = ? AND category_id = ? ORDER BY name LIMIT ? OFFSET ?',
+          [providerId, categoryId, limit, offset],
         )
       : await getDb().executeAsync(
-          'SELECT id, provider_id, category_id, name, poster, stream_url FROM movies WHERE provider_id = ? ORDER BY name',
-          [providerId],
+          'SELECT id, provider_id, category_id, name, poster, stream_url FROM movies WHERE provider_id = ? ORDER BY name LIMIT ? OFFSET ?',
+          [providerId, limit, offset],
+        );
+    return (res.rows?._array ?? []).map(toMovie);
+  },
+
+  async search(
+    providerId: string,
+    query: string,
+    limit = 120,
+    offset = 0,
+    categoryId?: string,
+  ): Promise<Movie[]> {
+    const q = `%${query}%`;
+    const res = categoryId
+      ? await getDb().executeAsync(
+          'SELECT id, provider_id, category_id, name, poster, stream_url FROM movies WHERE provider_id = ? AND category_id = ? AND name LIKE ? ORDER BY name LIMIT ? OFFSET ?',
+          [providerId, categoryId, q, limit, offset],
+        )
+      : await getDb().executeAsync(
+          'SELECT id, provider_id, category_id, name, poster, stream_url FROM movies WHERE provider_id = ? AND name LIKE ? ORDER BY name LIMIT ? OFFSET ?',
+          [providerId, q, limit, offset],
         );
     return (res.rows?._array ?? []).map(toMovie);
   },
@@ -47,4 +72,3 @@ export const movieRepo = {
     getDb().execute('DELETE FROM movies WHERE provider_id = ?', [providerId]);
   },
 };
-
