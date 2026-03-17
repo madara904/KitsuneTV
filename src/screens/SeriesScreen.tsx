@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -12,6 +12,60 @@ import type { Category, SeriesItem } from '../lib/types';
 const PAGE_SIZE = 40;
 const ROW_HEIGHT = 67;
 
+type SeriesRowProps = {
+  item: SeriesItem;
+  isFavorite: boolean;
+  onOpen: (id: string) => void;
+  onToggleFavorite: (id: string) => void;
+};
+
+const SeriesRow = memo(function SeriesRow({ item, isFavorite, onOpen, onToggleFavorite }: SeriesRowProps) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  return (
+    <Pressable
+      onPress={() => onOpen(item.id)}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      focusable
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        marginVertical: 2,
+        borderWidth: isFocused ? 2 : 1,
+        borderColor: isFocused ? '#d8b4fe' : '#1f1f2b',
+        borderRadius: 10,
+        backgroundColor: isFocused ? '#1b1b26' : 'transparent',
+      }}
+    >
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 8,
+          backgroundColor: '#272732',
+          marginRight: 12,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <MaterialCommunityIcons name="television-classic" size={20} color="#8b8ba0" />
+      </View>
+      <Text className="text-white flex-1" numberOfLines={1}>
+        {item.name}
+      </Text>
+      <Pressable onPress={() => onToggleFavorite(item.id)} focusable={false} style={{ padding: 8 }}>
+        <MaterialCommunityIcons
+          name={isFavorite ? 'heart' : 'heart-outline'}
+          size={20}
+          color={isFavorite ? '#ec4899' : '#8b8ba0'}
+        />
+      </Pressable>
+    </Pressable>
+  );
+});
+
 export function SeriesScreen() {
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -20,12 +74,12 @@ export function SeriesScreen() {
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [mode, setMode] = useState<ContentMode>('all');
-  const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const [searchFocused, setSearchFocused] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const query = search.trim();
+  const query = useMemo(() => search.trim(), [search]);
 
   const fetchPage = useCallback(
     async (providerId: string, pageOffset: number) => {
@@ -120,16 +174,21 @@ export function SeriesScreen() {
     await mediaCollectionRepo.markRecent('series', id);
   }, []);
 
+  const renderItem = useCallback(
+    ({ item }: { item: SeriesItem }) => (
+      <SeriesRow
+        item={item}
+        isFavorite={favoriteIds.has(item.id)}
+        onOpen={openSeries}
+        onToggleFavorite={toggleFavorite}
+      />
+    ),
+    [favoriteIds, openSeries, toggleFavorite],
+  );
+
   return (
     <View className="flex-1" style={{ backgroundColor: '#0e0e12' }}>
-      <ContentModeTabs
-        mode={mode}
-        focusedKey={focusedKey}
-        fullscreen={false}
-        onFocusKey={setFocusedKey}
-        onBlurKey={() => setFocusedKey(null)}
-        onSelect={setMode}
-      />
+      <ContentModeTabs mode={mode} fullscreen={false} onSelect={setMode} />
 
       <View
         style={{
@@ -141,8 +200,8 @@ export function SeriesScreen() {
           height: 40,
           paddingHorizontal: 12,
           borderRadius: 10,
-          borderWidth: focusedKey === 'series-search' ? 3 : 1,
-          borderColor: focusedKey === 'series-search' ? '#d8b4fe' : '#3f3f46',
+          borderWidth: searchFocused ? 3 : 1,
+          borderColor: searchFocused ? '#d8b4fe' : '#3f3f46',
           backgroundColor: '#1c1c24',
         }}
       >
@@ -153,8 +212,8 @@ export function SeriesScreen() {
           placeholderTextColor="#6e6e7d"
           value={search}
           onChangeText={setSearch}
-          onFocus={() => setFocusedKey('series-search')}
-          onBlur={() => setFocusedKey(null)}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
           focusable
           style={{ paddingVertical: 8, color: '#fff' }}
         />
@@ -176,8 +235,8 @@ export function SeriesScreen() {
                 : rawName.length > 0
                 ? rawName
                 : `Kategorie ${index}`;
-            const textColor = selected ? '#111827' : '#e5e5e5';
-            const chipBackground = selected ? '#e5e7ff' : '#111827';
+            const textColor = '#ffffff';
+            const chipBackground = selected ? '#7c3aed' : '#111827';
             return (
               <Pressable
                 onPress={() => setSelectedCategoryId(item.id === '__all__' ? null : item.id)}
@@ -214,54 +273,15 @@ export function SeriesScreen() {
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={3}
+          removeClippedSubviews
+          updateCellsBatchingPeriod={16}
           getItemLayout={(_, index) => ({ length: ROW_HEIGHT, offset: ROW_HEIGHT * index, index })}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
           ListFooterComponent={
             loadingMore ? <ActivityIndicator color="#a78bfa" style={{ marginVertical: 10 }} /> : null
           }
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => openSeries(item.id)}
-              onFocus={() => setFocusedKey('series-item-' + item.id)}
-              onBlur={() => setFocusedKey(null)}
-              focusable
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: '#1f1f2b',
-                borderWidth: focusedKey === 'series-item-' + item.id ? 2 : 0,
-                borderColor: '#d8b4fe',
-                borderRadius: 10,
-              }}
-            >
-              <View
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 8,
-                  backgroundColor: '#272732',
-                  marginRight: 12,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <MaterialCommunityIcons name="television-classic" size={20} color="#8b8ba0" />
-              </View>
-              <Text className="text-white flex-1" numberOfLines={1}>
-                {item.name}
-              </Text>
-              <Pressable onPress={() => toggleFavorite(item.id)} focusable={false} style={{ padding: 8 }}>
-                <MaterialCommunityIcons
-                  name={favoriteIds.has(item.id) ? 'heart' : 'heart-outline'}
-                  size={20}
-                  color={favoriteIds.has(item.id) ? '#ec4899' : '#8b8ba0'}
-                />
-              </Pressable>
-            </Pressable>
-          )}
+          renderItem={renderItem}
         />
       )}
     </View>

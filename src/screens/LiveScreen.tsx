@@ -518,10 +518,7 @@ export function LiveScreen() {
 
       <ContentModeTabs
         mode={contentMode}
-        focusedKey={focusedKey}
         fullscreen={fullscreen}
-        onFocusKey={setFocusedKeyStable}
-        onBlurKey={clearFocusedKey}
         onTabHandle={(mode, handle) => {
           if (mode === 'all') setModeAllHandle(handle);
           else if (mode === 'favorites') setModeFavoritesHandle(handle);
