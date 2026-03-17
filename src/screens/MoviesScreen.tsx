@@ -1,5 +1,5 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from 'react-native';
+import React, { memo, useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { providerService } from '../services/providerService';
@@ -7,6 +7,7 @@ import { mediaService } from '../services/mediaService';
 import { mediaCollectionRepo } from '../db/repositories/mediaCollectionRepo';
 import { EmptyState } from '../components/common/EmptyState';
 import { ContentModeTabs, type ContentMode } from '../components/common/ContentModeTabs';
+import { DebouncedSearchInput } from '../components/common/DebouncedSearchInput';
 import type { Category, Movie } from '../lib/types';
 
 const PAGE_SIZE = 40;
@@ -33,8 +34,6 @@ const MovieRow = memo(function MovieRow({ item, isFavorite, onOpen, onToggleFavo
         alignItems: 'center',
         paddingVertical: 12,
         marginVertical: 2,
-        borderWidth: isFocused ? 2 : 1,
-        borderColor: isFocused ? '#d8b4fe' : '#1f1f2b',
         borderRadius: 10,
         backgroundColor: isFocused ? '#1b1b26' : 'transparent',
       }}
@@ -72,14 +71,11 @@ export function MoviesScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [items, setItems] = useState<Movie[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
   const [mode, setMode] = useState<ContentMode>('all');
-  const [searchFocused, setSearchFocused] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-
-  const query = useMemo(() => search.trim(), [search]);
 
   const fetchPage = useCallback(
     async (providerId: string, pageOffset: number) => {
@@ -190,42 +186,21 @@ export function MoviesScreen() {
     <View className="flex-1" style={{ backgroundColor: '#0e0e12' }}>
       <ContentModeTabs mode={mode} fullscreen={false} onSelect={setMode} />
 
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 10,
-          marginHorizontal: 16,
-          marginVertical: 10,
-          height: 40,
-          paddingHorizontal: 12,
-          borderRadius: 10,
-          borderWidth: searchFocused ? 3 : 1,
-          borderColor: searchFocused ? '#d8b4fe' : '#3f3f46',
-          backgroundColor: '#1c1c24',
-        }}
-      >
-        <MaterialCommunityIcons name="magnify" size={18} color="#6e6e7d" />
-        <TextInput
-          className="flex-1 text-white text-sm p-0"
-          placeholder="Movies suchen..."
-          placeholderTextColor="#6e6e7d"
-          value={search}
-          onChangeText={setSearch}
-          onFocus={() => setSearchFocused(true)}
-          onBlur={() => setSearchFocused(false)}
-          focusable
-          style={{ paddingVertical: 8, color: '#fff' }}
-        />
-      </View>
+      <DebouncedSearchInput
+        placeholder="Movies suchen..."
+        onSearchChange={setQuery}
+        minLength={2}
+        debounceMs={400}
+      />
 
       {categories.length > 0 && mode === 'all' && (
-        <FlatList
-          horizontal
-          data={[{ id: '__all__', name: 'All', providerId: selectedProviderId ?? '' }, ...categories]}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 10, gap: 8 }}
-          renderItem={({ item, index }) => {
+        <View style={{ height: 52, justifyContent: 'center' }}>
+          <FlatList
+            horizontal
+            data={[{ id: '__all__', name: 'All', providerId: selectedProviderId ?? '' }, ...categories]}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingRight: 32, paddingBottom: 10, gap: 8 }}
+            renderItem={({ item, index }) => {
             const selected =
               (item.id === '__all__' && selectedCategoryId == null) || item.id === selectedCategoryId;
             const rawName = (item.name ?? '').trim();
@@ -243,20 +218,30 @@ export function MoviesScreen() {
                 focusable
                 style={{
                   paddingHorizontal: 16,
-                  paddingVertical: 10,
+                  paddingVertical: 8,
                   borderRadius: 999,
                   borderWidth: 1.5,
                   borderColor: selected ? '#a855f7' : '#3f3f46',
                   backgroundColor: chipBackground,
+                  minWidth: 80,
                 }}
               >
-                <Text style={{ color: textColor, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                <Text
+                  style={{
+                    color: textColor,
+                    fontSize: 13,
+                    fontWeight: '600',
+                    lineHeight: 16,
+                  }}
+                  numberOfLines={1}
+                >
                   {label}
                 </Text>
               </Pressable>
             );
           }}
-        />
+          />
+        </View>
       )}
 
       {items.length === 0 ? (
@@ -269,7 +254,7 @@ export function MoviesScreen() {
         <FlatList
           data={items}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80 }}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={3}
