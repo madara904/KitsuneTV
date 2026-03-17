@@ -146,6 +146,7 @@ export function PlayerColumn() {
   } = usePlayer();
 
   const hasVod = currentVod != null;
+  const isLive = currentChannel != null && !hasVod;
   const streamUrl = currentChannel?.streamUrl ?? currentVod?.streamUrl ?? '';
 
   const [error, setError] = useState<string | null>(null);
@@ -434,12 +435,19 @@ export function PlayerColumn() {
   // v6 API: source holds uri + bufferConfig (bufferConfig prop is deprecated)
   const videoSource = {
     uri: streamUrl,
-    bufferConfig: {
-      minBufferMs: 8000,
-      maxBufferMs: 25000,
-      bufferForPlaybackMs: 2500,
-      bufferForPlaybackAfterRebufferMs: 5000,
-    },
+    bufferConfig: isLive
+      ? {
+          minBufferMs: 12000,
+          maxBufferMs: 30000,
+          bufferForPlaybackMs: 3000,
+          bufferForPlaybackAfterRebufferMs: 6000,
+        }
+      : {
+          minBufferMs: 8000,
+          maxBufferMs: 25000,
+          bufferForPlaybackMs: 2500,
+          bufferForPlaybackAfterRebufferMs: 5000,
+        },
   };
 
   // v6 docs: focusable=false so Video never steals TV focus; controls=false we use custom UI
@@ -451,10 +459,18 @@ export function PlayerColumn() {
     paused: paused || !!error,
     rate: 1.0,
     progressUpdateInterval: 1000,
-    useTextureView: true,
+    // SurfaceView ist auf vielen Android-TV Geräten stabiler für Live-Streams.
+    useTextureView: !isLive,
     onError: handlePlayerError,
     onLoad: handleVideoLoad,
     onProgress: hasVod ? handleProgress : undefined,
+    onBuffer: isLive
+      ? (e: { isBuffering: boolean }) => {
+          if (!e.isBuffering && error) {
+            setError(null);
+          }
+        }
+      : undefined,
     focusable: false,
     controls: false,
     preventsDisplaySleepDuringVideoPlayback: true,

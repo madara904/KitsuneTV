@@ -138,23 +138,38 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     [],
   );
 
-  const handleError = useCallback((e: unknown) => {
-    try {
-      const inner =
-        e != null &&
-        typeof e === 'object' &&
-        'error' in e &&
-        (e as { error: unknown }).error;
-      const msg =
-        inner && typeof inner === 'object' && 'errorString' in inner
-          ? String((inner as { errorString: unknown }).errorString)
-          : 'Playback error';
+  const handleError = useCallback(
+    (e: unknown) => {
+      let msg = 'Playback error';
+      try {
+        const inner =
+          e != null &&
+          typeof e === 'object' &&
+          'error' in e &&
+          (e as { error: unknown }).error;
+        msg =
+          inner && typeof inner === 'object' && 'errorString' in inner
+            ? String((inner as { errorString: unknown }).errorString)
+            : msg;
+      } catch {
+        // ignore parsing errors, keep generic msg
+      }
+
+      // Spezieller VLC-Bug: "can't get VLCObject instance" → Screen hart schließen
+      if (msg.toLowerCase().includes("can't get vlcobject") || msg.toLowerCase().includes('vlcobject')) {
+        loadedRef.current = false;
+        setError(null);
+        setPaused(true);
+        navigation.goBack();
+        return;
+      }
+
       setError(msg);
-    } catch {
-      setError('Playback error');
-    }
-    setPaused(true);
-  }, []);
+      setPaused(true);
+      loadedRef.current = false;
+    },
+    [navigation],
+  );
 
   const seekBy = useCallback(
     (delta: number) => {
@@ -206,25 +221,38 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     <View className="flex-1 bg-slate-950">
       <View className="flex-1 bg-black">
         <VLCPlayer
+          key={movie.streamUrl}
           ref={videoRef}
-          source={videoSource}
-          style={{ width: '100%', height: '100%' }}
-          paused={paused}
-          rate={1.0}
-          videoAspectRatio="16:9"
-          resizeMode="contain"
-          autoAspectRatio
-          onError={handleError}
-          onProgress={(p: { currentTime: number; duration: number }) =>
-            handleProgress({
-              currentTime: p.currentTime,
-              playableDuration: p.duration,
-              seekableDuration: p.duration,
-            })
-          }
-          onPlaying={() => {
-            loadedRef.current = true;
-          }}
+          {...({
+            source: videoSource,
+            style: { width: '100%', height: '100%' },
+            paused,
+            rate: 1.0,
+            initType: 2,
+            initOptions: [
+              '--network-caching=3000',
+              '--live-caching=3000',
+              '--file-caching=2500',
+              '--avcodec-fast',
+              '--drop-late-frames',
+              '--skip-frames',
+              '--http-reconnect',
+              '--audio-time-stretch',
+            ],
+            videoAspectRatio: '16:9' as const,
+            resizeMode: 'contain' as const,
+            autoAspectRatio: true,
+            onError: handleError,
+            onProgress: (p: { currentTime: number; duration: number }) =>
+              handleProgress({
+                currentTime: p.currentTime,
+                playableDuration: p.duration,
+                seekableDuration: p.duration,
+              }),
+            onPlaying: () => {
+              loadedRef.current = true;
+            },
+          } as any)}
         />
         {error && (
           <View className="absolute inset-0 items-center justify-center bg-black/75">
