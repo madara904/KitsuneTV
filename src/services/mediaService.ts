@@ -270,6 +270,27 @@ export const mediaService = {
     return movieRepo.getMany(ids);
   },
 
+  async getMovieDetails(movieId: string): Promise<{ description?: string }> {
+    const [movie] = await movieRepo.getMany([movieId]);
+    if (!movie) return {};
+    const provider = await providerRepo.get(movie.providerId);
+    if (!provider || provider.type !== 'xtream') return {};
+    const creds = await getProviderCredentials(movie.providerId);
+    if (!creds) return {};
+    const match = movie.id.match(/_movie_(\d+)$/);
+    const numericVodId = match ? Number(match[1]) : NaN;
+    if (!Number.isFinite(numericVodId)) return {};
+    const config: Xtream.XtreamConfig = {
+      serverUrl: provider.url,
+      username: creds.username,
+      password: creds.password,
+    };
+    const info = await Xtream.getVodInfo(config, numericVodId);
+    const description =
+      (typeof info?.info?.plot === 'string' && info.info.plot.trim()) || undefined;
+    return description ? { description } : {};
+  },
+
   async getSeriesCategories(providerId: string): Promise<Category[]> {
     const res = await getDb().executeAsync(
       'SELECT id, provider_id, name FROM series_categories WHERE provider_id = ? ORDER BY name',
@@ -306,6 +327,7 @@ export const mediaService = {
   },
 
   async getSeriesSeasonsAndEpisodes(seriesId: string): Promise<{
+    seriesInfo?: { description?: string };
     seasons: Array<{
       seasonNumber: number;
       episodes: Array<{
@@ -315,21 +337,22 @@ export const mediaService = {
         title: string;
         summary?: string;
         streamUrl?: string;
+        imageUrl?: string;
       }>;
     }>;
   }> {
     const seriesRows = await seriesRepo.getMany([seriesId]);
     const series = seriesRows[0];
     if (!series) {
-      return { seasons: [] };
+      return { seriesInfo: undefined, seasons: [] };
     }
 
     const provider = await providerRepo.get(series.providerId);
     if (!provider || provider.type !== 'xtream') {
-      return { seasons: [] };
+      return { seriesInfo: undefined, seasons: [] };
     }
     const creds = await getProviderCredentials(series.providerId);
-    if (!creds) return { seasons: [] };
+    if (!creds) return { seriesInfo: undefined, seasons: [] };
 
     const config: Xtream.XtreamConfig = {
       serverUrl: provider.url,
@@ -340,13 +363,16 @@ export const mediaService = {
     const numericIdMatch = series.id.match(/_series_(\d+)$/);
     const numericSeriesId = numericIdMatch ? Number(numericIdMatch[1]) : NaN;
     if (!Number.isFinite(numericSeriesId)) {
-      return { seasons: [] };
+      return { seriesInfo: undefined, seasons: [] };
     }
 
     const info = await Xtream.getSeriesInfo(config, numericSeriesId);
     if (!info || !info.episodes) {
-      return { seasons: [] };
+      return { seriesInfo: undefined, seasons: [] };
     }
+
+    const seriesDescription =
+      (typeof info.info?.plot === 'string' && info.info.plot.trim()) || undefined;
 
     const seasons: Array<{
       seasonNumber: number;
@@ -357,6 +383,7 @@ export const mediaService = {
         title: string;
         summary?: string;
         streamUrl?: string;
+        imageUrl?: string;
       }>;
     }> = [];
 
@@ -369,6 +396,10 @@ export const mediaService = {
         const streamUrl = `${base}/series/${encodeURIComponent(creds.username)}/${encodeURIComponent(
           creds.password,
         )}/${ep.id}.${ext}`;
+        const imageUrl =
+          (typeof (ep.info?.movie_image ?? ep.movie_image) === 'string' &&
+            (ep.info?.movie_image ?? ep.movie_image)?.trim()) ||
+          undefined;
         console.info(
           '[seriesEpisodeUrl]',
           JSON.stringify({
@@ -386,6 +417,7 @@ export const mediaService = {
           title: ep.title || `Episode ${ep.episode_num}`,
           summary: ep.info?.plot,
           streamUrl,
+          imageUrl: imageUrl || undefined,
         };
       });
       seasons.push({
@@ -399,6 +431,9 @@ export const mediaService = {
       s.episodes.sort((a, b) => a.episodeNumber - b.episodeNumber),
     );
 
-    return { seasons };
+    return {
+      seriesInfo: seriesDescription ? { description: seriesDescription } : undefined,
+      seasons,
+    };
   },
 };

@@ -41,6 +41,16 @@ export interface XtreamVodStream {
   container_extension?: string;
 }
 
+export interface XtreamVodInfoResponse {
+  info?: {
+    name?: string;
+    plot?: string;
+    stream_icon?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
 export interface XtreamSeriesItem {
   series_id: number;
   name: string;
@@ -56,8 +66,10 @@ export interface XtreamSeriesEpisode {
   container_extension?: string;
   info?: {
     plot?: string;
+    movie_image?: string;
     [key: string]: unknown;
   };
+  movie_image?: string;
 }
 
 export interface XtreamSeriesInfoResponse {
@@ -70,6 +82,7 @@ export interface XtreamSeriesInfoResponse {
   info?: {
     name?: string;
     cover?: string;
+    plot?: string;
     [key: string]: unknown;
   };
 }

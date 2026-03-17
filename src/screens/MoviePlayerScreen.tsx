@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, Text, View } from 'react-native';
 import { VLCPlayer } from 'react-native-vlc-media-player';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -9,6 +9,8 @@ import { ResumePromptModal } from '../components/common/ResumePromptModal';
 
 const SAVE_INTERVAL_MS = 8000;
 const MIN_RESUME_SEC = 3;
+const PROGRESS_UI_UPDATE_MS = 1000;
+const VLC_PROGRESS_SCALE = 1000;
 
 type FocusedControl = 'play' | 'rewind' | 'forward' | 'fullscreen' | 'back' | null;
 
@@ -32,6 +34,8 @@ export function MoviePlayerScreen({ route, navigation }: any) {
   const currentTimeRef = useRef(0);
   const durationRef = useRef(0);
   const resumeHandleRef = useRef<number | null>(null);
+  const pendingSeekSecRef = useRef<number | null>(null);
+  const lastProgressUiUpdateRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,21 +126,54 @@ export function MoviePlayerScreen({ route, navigation }: any) {
 
   const handleProgress = useCallback(
     (e: Readonly<{ currentTime: number; playableDuration: number; seekableDuration: number }>) => {
-      const normalize = (value: number) => {
-        // VLC liefert je nach Plattform Sekunden oder Millisekunden.
-        return value > 0 && value > 24 * 3600 ? value / 1000 : value;
-      };
-      const current = normalize(e.currentTime);
+      const current = e.currentTime / VLC_PROGRESS_SCALE;
       const effectiveDurationRaw =
         e.seekableDuration > 0 ? e.seekableDuration : e.playableDuration;
-      const effectiveDuration = normalize(effectiveDurationRaw);
+      const effectiveDuration = effectiveDurationRaw / VLC_PROGRESS_SCALE;
       currentTimeRef.current = current;
       if (effectiveDuration > 0) durationRef.current = effectiveDuration;
+
+      const now = Date.now();
+      if (
+        now - lastProgressUiUpdateRef.current < PROGRESS_UI_UPDATE_MS &&
+        Math.abs(current - currentTimeSec) < 1 &&
+        Math.abs(effectiveDuration - durationSec) < 1
+      ) {
+        return;
+      }
+
+      lastProgressUiUpdateRef.current = now;
       setCurrentTimeSec(current);
       if (effectiveDuration > 0) setDurationSec(effectiveDuration);
     },
-    [],
+    [currentTimeSec, durationSec],
   );
+
+  const seekToTime = useCallback((targetSec: number) => {
+    const duration = durationRef.current > 0 ? durationRef.current : durationSec;
+    if (!loadedRef.current || duration <= 0) {
+      pendingSeekSecRef.current = targetSec;
+      return false;
+    }
+
+    const next = Math.max(0, Math.min(targetSec, duration));
+    try {
+      (videoRef.current as any)?.seek(next / duration);
+      currentTimeRef.current = next;
+      setCurrentTimeSec(next);
+      pendingSeekSecRef.current = null;
+      return true;
+    } catch {
+      pendingSeekSecRef.current = next;
+      return false;
+    }
+  }, [durationSec]);
+
+  const applyPendingSeek = useCallback(() => {
+    const pendingSeek = pendingSeekSecRef.current;
+    if (pendingSeek == null) return;
+    seekToTime(pendingSeek);
+  }, [seekToTime]);
 
   const handleError = useCallback(
     (e: unknown) => {
@@ -158,6 +195,7 @@ export function MoviePlayerScreen({ route, navigation }: any) {
       // Spezieller VLC-Bug: "can't get VLCObject instance" → Screen hart schließen
       if (msg.toLowerCase().includes("can't get vlcobject") || msg.toLowerCase().includes('vlcobject')) {
         loadedRef.current = false;
+        pendingSeekSecRef.current = null;
         setError(null);
         setPaused(true);
         navigation.goBack();
@@ -167,6 +205,7 @@ export function MoviePlayerScreen({ route, navigation }: any) {
       setError(msg);
       setPaused(true);
       loadedRef.current = false;
+      pendingSeekSecRef.current = null;
     },
     [navigation],
   );
@@ -178,17 +217,23 @@ export function MoviePlayerScreen({ route, navigation }: any) {
       if (!duration || duration <= 0) return;
       const current = currentTimeRef.current || currentTimeSec;
       const next = Math.max(0, Math.min(current + delta, duration));
-      const fraction = next / duration;
-      try {
-        (videoRef.current as any)?.seek(fraction);
-      } catch {
-        // ignore seek errors
-      }
-      currentTimeRef.current = next;
-      setCurrentTimeSec(next);
+      seekToTime(next);
     },
-    [currentTimeSec, durationSec],
+    [currentTimeSec, durationSec, seekToTime],
   );
+
+  const handlePlayerReady = useCallback((event?: { duration?: number }) => {
+    loadedRef.current = true;
+    setError(null);
+
+    const duration = event?.duration ? event.duration / VLC_PROGRESS_SCALE : 0;
+    if (duration > 0) {
+      durationRef.current = duration;
+      setDurationSec((prev) => (Math.abs(prev - duration) >= 1 ? duration : prev));
+    }
+
+    applyPendingSeek();
+  }, [applyPendingSeek]);
 
   const formatTime = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return '0:00';
@@ -197,6 +242,31 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     const seconds = total % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
+
+  const videoSource = useMemo(() => ({
+    uri: movie?.streamUrl ?? '',
+  }), [movie?.streamUrl]);
+
+  const initOptions = useMemo(
+    () => [
+      '--network-caching=2000',
+      '--live-caching=2500',
+      '--file-caching=2000',
+      '--http-reconnect',
+    ],
+    [],
+  );
+
+  useEffect(() => {
+    loadedRef.current = false;
+    currentTimeRef.current = 0;
+    durationRef.current = 0;
+    pendingSeekSecRef.current = null;
+    lastProgressUiUpdateRef.current = 0;
+    setCurrentTimeSec(0);
+    setDurationSec(0);
+    setError(null);
+  }, [movie?.streamUrl]);
 
   if (loading || !movie?.streamUrl) {
     return (
@@ -210,10 +280,6 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     );
   }
 
-
-  const videoSource = {
-    uri: movie.streamUrl,
-  };
 
   const modalVisible = resumePromptVisible && initialPositionSec > 0;
 
@@ -229,16 +295,7 @@ export function MoviePlayerScreen({ route, navigation }: any) {
             paused,
             rate: 1.0,
             initType: 2,
-            initOptions: [
-              '--network-caching=3000',
-              '--live-caching=3000',
-              '--file-caching=2500',
-              '--avcodec-fast',
-              '--drop-late-frames',
-              '--skip-frames',
-              '--http-reconnect',
-              '--audio-time-stretch',
-            ],
+            initOptions,
             videoAspectRatio: '16:9' as const,
             resizeMode: 'contain' as const,
             autoAspectRatio: true,
@@ -249,9 +306,8 @@ export function MoviePlayerScreen({ route, navigation }: any) {
                 playableDuration: p.duration,
                 seekableDuration: p.duration,
               }),
-            onPlaying: () => {
-              loadedRef.current = true;
-            },
+            onLoad: handlePlayerReady,
+            onPlaying: handlePlayerReady,
           } as any)}
         />
         {error && (
@@ -285,11 +341,8 @@ export function MoviePlayerScreen({ route, navigation }: any) {
           setPaused(false);
         }}
         onResume={() => {
-          if (durationSec > 0 && loadedRef.current) {
-            const next = Math.max(0, Math.min(initialPositionSec, durationSec));
-            videoRef.current?.seek(next);
-            setCurrentTimeSec(next);
-          }
+          pendingSeekSecRef.current = initialPositionSec;
+          applyPendingSeek();
           setResumePromptVisible(false);
           setInitialPositionSec(0);
           setPaused(false);
@@ -409,4 +462,3 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     </View>
   );
 }
-

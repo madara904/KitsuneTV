@@ -12,6 +12,7 @@ export function MovieDetailScreen({ route, navigation }: any) {
   const [movie, setMovie] = useState<Movie | null>(null);
   const [favorite, setFavorite] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [movieDescription, setMovieDescription] = useState<string | null>(null);
   const [focusedButton, setFocusedButton] = useState<FocusedButton>(null);
   const backButtonRef = useRef<View | null>(null);
   const playButtonRef = useRef<View | null>(null);
@@ -27,6 +28,8 @@ export function MovieDetailScreen({ route, navigation }: any) {
         if (!cancelled) setMovie(row ?? null);
         const favIds = await mediaCollectionRepo.favoriteIds('movie');
         if (!cancelled) setFavorite(favIds.includes(movieId));
+        const details = await mediaService.getMovieDetails(movieId);
+        if (!cancelled && details.description) setMovieDescription(details.description);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -181,9 +184,10 @@ export function MovieDetailScreen({ route, navigation }: any) {
               maxWidth: 620,
               marginBottom: 24,
             }}
-            numberOfLines={4}
+            numberOfLines={6}
           >
-            Keine Beschreibung vom Provider verfügbar. Lehne dich zurück, drücke Play und lass dich überraschen.
+            {movieDescription?.trim() ||
+              'Keine Beschreibung vom Provider verfügbar. Lehne dich zurück, drücke Play und lass dich überraschen.'}
           </Text>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>

@@ -15,6 +15,7 @@ type Episode = {
   title: string;
   summary?: string;
   streamUrl?: string;
+  imageUrl?: string;
 };
 
 type Season = {
@@ -140,21 +141,32 @@ const EpisodeCard = memo(function EpisodeCard({
   onPlay: (episode: Episode) => void;
 }) {
   const [focused, setFocused] = useState(false);
+  const imageUri = episode.imageUrl?.trim() || null;
   return (
     <Pressable
       onPress={() => onPlay(episode)}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       focusable
-      className={`min-w-[140px] max-w-[260px] flex-1 rounded-2xl p-3 mr-3 mb-3 border-2 border-solid ${
+      className={`min-w-[280px] max-w-[380px] flex-1 rounded-2xl overflow-hidden mr-3 mb-3 border-2 border-solid ${
         focused ? 'border-purple-300 bg-slate-800' : 'border-slate-800 bg-slate-900/70'
       }`}
     >
-      <View className="flex-row items-center mb-2">
-        <View className="w-10 h-10 rounded-xl bg-slate-800 items-center justify-center mr-3">
-          <MaterialCommunityIcons name="play-circle-outline" size={24} color="#e5e7eb" />
+      <View className="flex-row">
+        <View className="w-[120px] h-[68px] rounded-l-xl bg-slate-800 shrink-0 overflow-hidden">
+          {imageUri ? (
+            <Image
+              source={{ uri: imageUri }}
+              className="w-full h-full"
+              resizeMode="cover"
+            />
+          ) : (
+            <View className="w-full h-full items-center justify-center">
+              <MaterialCommunityIcons name="play-circle-outline" size={28} color="#64748b" />
+            </View>
+          )}
         </View>
-        <View className="flex-1">
+        <View className="flex-1 p-3 justify-center min-w-0">
           <Text
             className="text-xs text-slate-400 font-medium mb-0.5"
             numberOfLines={1}
@@ -167,16 +179,16 @@ const EpisodeCard = memo(function EpisodeCard({
           >
             {episode.title}
           </Text>
+          {episode.summary ? (
+            <Text
+              className="text-[11px] text-slate-400 mt-1"
+              numberOfLines={2}
+            >
+              {episode.summary}
+            </Text>
+          ) : null}
         </View>
       </View>
-      {episode.summary ? (
-        <Text
-          className="text-[11px] text-slate-400"
-          numberOfLines={3}
-        >
-          {episode.summary}
-        </Text>
-      ) : null}
     </Pressable>
   );
 });
@@ -195,6 +207,7 @@ export function SeriesDetailScreen({ route, navigation }: any) {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonNumber, setSelectedSeasonNumber] = useState<number | null>(null);
   const [seasonModalVisible, setSeasonModalVisible] = useState(false);
+  const [seriesDescription, setSeriesDescription] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -205,8 +218,10 @@ export function SeriesDetailScreen({ route, navigation }: any) {
         const favIds = await mediaCollectionRepo.favoriteIds('series');
         if (!cancelled) setFavorite(favIds.includes(seriesId));
         if (cancelled) return;
-        const { seasons: fetchedSeasons } = await mediaService.getSeriesSeasonsAndEpisodes(seriesId);
+        const { seriesInfo, seasons: fetchedSeasons } =
+          await mediaService.getSeriesSeasonsAndEpisodes(seriesId);
         if (!cancelled) {
+          setSeriesDescription(seriesInfo?.description ?? null);
           setSeasons(
             fetchedSeasons.map((s, idx) => ({
               id: `season_${s.seasonNumber}_${idx}`,
@@ -345,9 +360,10 @@ export function SeriesDetailScreen({ route, navigation }: any) {
 
             <Text
               className="text-sm text-slate-400 leading-5 max-w-[620px] mb-6"
-              numberOfLines={4}
+              numberOfLines={6}
             >
-              Keine Beschreibung vom Provider verfügbar. Wähle eine Episode aus und lehne dich zurück.
+              {seriesDescription?.trim() ||
+                'Keine Beschreibung vom Provider verfügbar. Wähle eine Episode aus und lehne dich zurück.'}
             </Text>
 
             <View className="flex-row items-center mb-4">

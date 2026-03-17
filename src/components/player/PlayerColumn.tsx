@@ -12,6 +12,7 @@
  */
 
 import React, {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -133,7 +134,7 @@ function useControlsVisibility(active: boolean) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export function PlayerColumn() {
+export const PlayerColumn = memo(function PlayerColumn() {
   const {
     currentChannel,
     setCurrentChannel,
@@ -673,4 +674,4 @@ export function PlayerColumn() {
       </View>
     </PlayerErrorBoundary>
   );
-}
+});
