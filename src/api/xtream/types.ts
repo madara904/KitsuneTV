@@ -47,3 +47,29 @@ export interface XtreamSeriesItem {
   category_id?: string;
   cover?: string;
 }
+
+export interface XtreamSeriesEpisode {
+  id: number;
+  title: string;
+  episode_num: number;
+  season: number;
+  container_extension?: string;
+  info?: {
+    plot?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface XtreamSeriesInfoResponse {
+  seasons?: Array<{
+    season_number: number;
+  }>;
+  episodes?: {
+    [seasonNumber: string]: XtreamSeriesEpisode[];
+  };
+  info?: {
+    name?: string;
+    cover?: string;
+    [key: string]: unknown;
+  };
+}

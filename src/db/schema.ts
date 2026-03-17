@@ -98,6 +98,16 @@ CREATE TABLE IF NOT EXISTS media_collections (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_media_collections_unique
 ON media_collections(content_type, content_id, collection_type);
 
+CREATE TABLE IF NOT EXISTS watch_progress (
+  content_type TEXT NOT NULL,
+  content_id TEXT NOT NULL,
+  episode_id TEXT NOT NULL DEFAULT '',
+  position_sec REAL NOT NULL,
+  duration_sec REAL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (content_type, content_id, episode_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_channels_provider ON channels(provider_id);
 CREATE INDEX IF NOT EXISTS idx_channels_category ON channels(category_id);
 CREATE INDEX IF NOT EXISTS idx_categories_provider ON categories(provider_id);

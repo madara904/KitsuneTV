@@ -304,4 +304,101 @@ export const mediaService = {
   async getSeriesByIds(ids: string[]): Promise<SeriesItem[]> {
     return seriesRepo.getMany(ids);
   },
+
+  async getSeriesSeasonsAndEpisodes(seriesId: string): Promise<{
+    seasons: Array<{
+      seasonNumber: number;
+      episodes: Array<{
+        id: string;
+        seasonNumber: number;
+        episodeNumber: number;
+        title: string;
+        summary?: string;
+        streamUrl?: string;
+      }>;
+    }>;
+  }> {
+    const seriesRows = await seriesRepo.getMany([seriesId]);
+    const series = seriesRows[0];
+    if (!series) {
+      return { seasons: [] };
+    }
+
+    const provider = await providerRepo.get(series.providerId);
+    if (!provider || provider.type !== 'xtream') {
+      return { seasons: [] };
+    }
+    const creds = await getProviderCredentials(series.providerId);
+    if (!creds) return { seasons: [] };
+
+    const config: Xtream.XtreamConfig = {
+      serverUrl: provider.url,
+      username: creds.username,
+      password: creds.password,
+    };
+
+    const numericIdMatch = series.id.match(/_series_(\d+)$/);
+    const numericSeriesId = numericIdMatch ? Number(numericIdMatch[1]) : NaN;
+    if (!Number.isFinite(numericSeriesId)) {
+      return { seasons: [] };
+    }
+
+    const info = await Xtream.getSeriesInfo(config, numericSeriesId);
+    if (!info || !info.episodes) {
+      return { seasons: [] };
+    }
+
+    const seasons: Array<{
+      seasonNumber: number;
+      episodes: Array<{
+        id: string;
+        seasonNumber: number;
+        episodeNumber: number;
+        title: string;
+        summary?: string;
+        streamUrl?: string;
+      }>;
+    }> = [];
+
+    for (const [seasonKey, eps] of Object.entries(info.episodes)) {
+      const seasonNumber = Number(seasonKey);
+      if (!Number.isFinite(seasonNumber)) continue;
+      const mappedEpisodes = eps.map((ep) => {
+        const ext = ep.container_extension ? ep.container_extension : 'ts';
+        const base = provider.url.replace(/\/$/, '');
+        const streamUrl = `${base}/series/${encodeURIComponent(creds.username)}/${encodeURIComponent(
+          creds.password,
+        )}/${ep.id}.${ext}`;
+        console.info(
+          '[seriesEpisodeUrl]',
+          JSON.stringify({
+            seriesId,
+            seasonNumber,
+            episodeNum: ep.episode_num,
+            ext,
+            streamUrl,
+          }),
+        );
+        return {
+          id: `${seriesId}_s${seasonNumber}_e${ep.episode_num}`,
+          seasonNumber,
+          episodeNumber: ep.episode_num,
+          title: ep.title || `Episode ${ep.episode_num}`,
+          summary: ep.info?.plot,
+          streamUrl,
+        };
+      });
+      seasons.push({
+        seasonNumber,
+        episodes: mappedEpisodes,
+      });
+    }
+
+    seasons.sort((a, b) => a.seasonNumber - b.seasonNumber);
+    seasons.forEach((s) =>
+      s.episodes.sort((a, b) => a.episodeNumber - b.episodeNumber),
+    );
+
+    return { seasons };
+  },
 };

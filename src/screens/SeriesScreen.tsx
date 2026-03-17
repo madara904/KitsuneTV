@@ -1,6 +1,6 @@
-import React, { memo, useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, Text, View, Image } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, Text, View, Image, Modal, TextInput } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { providerService } from '../services/providerService';
 import { mediaService } from '../services/mediaService';
@@ -74,39 +74,34 @@ const SeriesRow = memo(function SeriesRow({ item, isFavorite, onOpen, onToggleFa
   );
 });
 
-type CategoryChipProps = {
+const CategoryChip = memo(function CategoryChip({
+  label,
+  selected,
+  onPress,
+}: {
   label: string;
   selected: boolean;
   onPress: () => void;
-};
-
-const CategoryChip = memo(function CategoryChip({ label, selected, onPress }: CategoryChipProps) {
+}) {
   const [isFocused, setIsFocused] = useState(false);
-  const textColor = '#ffffff';
-  const chipBackground = selected ? '#7c3aed' : '#111827';
   return (
     <Pressable
       onPress={onPress}
       onFocus={() => setIsFocused(true)}
       onBlur={() => setIsFocused(false)}
       focusable
-      style={{
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 999,
-        borderWidth: isFocused ? 3 : 1.5,
-        borderColor: isFocused ? '#d8b4fe' : selected ? '#a855f7' : '#3f3f46',
-        backgroundColor: chipBackground,
-        minWidth: 80,
-      }}
+      className={`w-full py-3 px-4 rounded-xl items-center border-2 border-solid ${
+        isFocused
+          ? 'border-purple-300 bg-slate-700'
+          : selected
+          ? 'border-purple-600 bg-purple-900/40'
+          : 'border-slate-700 bg-slate-800'
+      }`}
     >
       <Text
-        style={{
-          color: textColor,
-          fontSize: 13,
-          fontWeight: '600',
-          lineHeight: 16,
-        }}
+        className={`text-sm text-center ${
+          selected || isFocused ? 'text-white font-bold' : 'text-gray-300 font-medium'
+        }`}
         numberOfLines={1}
       >
         {label}
@@ -115,7 +110,116 @@ const CategoryChip = memo(function CategoryChip({ label, selected, onPress }: Ca
   );
 });
 
+const FilterButton = memo(function FilterButton({
+  label,
+  onPress,
+}: {
+  label: string;
+  onPress: () => void;
+}) {
+  const [isFocused, setIsFocused] = useState(false);
+  return (
+    <Pressable
+      onPress={onPress}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      focusable
+      className={`h-[46px] px-4 flex-row items-center rounded-xl border-2 border-solid ${
+        isFocused ? 'bg-slate-700 border-purple-300' : 'bg-slate-900 border-slate-700'
+      }`}
+    >
+      <MaterialCommunityIcons
+        name="filter-variant"
+        size={22}
+        color={isFocused ? '#ffffff' : '#94a3b8'}
+      />
+      <Text
+        numberOfLines={1}
+        className={isFocused ? 'font-semibold text-white ml-2' : 'font-semibold text-slate-300 ml-2'}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+});
+
+type CategoryModalProps = {
+  visible: boolean;
+  categories: Pick<Category, 'id' | 'name'>[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  onClose: () => void;
+};
+
+const CategoryModal = memo(function CategoryModal({
+  visible,
+  categories,
+  selectedId,
+  onSelect,
+  onClose,
+}: CategoryModalProps) {
+
+
+  const [search, setSearch] = useState('');
+
+  const allOptions = useMemo(
+    () => [{ id: '__all__', name: 'Alle Serien' }, ...categories],
+    [categories],
+  );
+
+  const filteredOptions = useMemo(() => {
+    const value = search.trim().toLowerCase();
+    if (!value) return allOptions;
+    return allOptions.filter((item) => (item.name ?? '').toLowerCase().includes(value));
+  }, [allOptions, search]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View className="flex-1 justify-center items-center bg-black/85 p-10">
+        <View className="w-full max-w-[800px] max-h-[80%] bg-slate-950 rounded-3xl p-8 border border-slate-800">
+          <Text className="text-white text-2xl font-bold mb-6 text-center">Kategorie wählen</Text>
+
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Kategorien durchsuchen..."
+            placeholderTextColor="#64748b"
+            className="mb-4 px-4 py-3 rounded-xl bg-slate-900 text-slate-100 border border-slate-700"
+          />
+
+          <FlatList
+            data={filteredOptions}
+            keyExtractor={(item) => item.id ?? 'all'}
+            numColumns={3}
+            columnWrapperStyle={{ gap: 12, marginBottom: 12 }}
+            renderItem={({ item }) => (
+              <View className="flex-1">
+                <CategoryChip
+                  label={item.name}
+                  selected={item.id === '__all__' ? selectedId === null : selectedId === item.id}
+                  onPress={() => {
+                    onSelect(item.id === '__all__' ? null : item.id);
+                    onClose();
+                  }}
+                />
+              </View>
+            )}
+          />
+
+          <Pressable
+            onPress={onClose}
+            className="mt-6 py-4 bg-slate-800 rounded-xl items-center border border-slate-700 active:bg-slate-600"
+          >
+            <Text className="text-gray-300 font-bold">Abbrechen</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+});
+
 export function SeriesScreen() {
+  const [isCatModalVisible, setIsCatModalVisible] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -128,6 +232,7 @@ export function SeriesScreen() {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const navigation = useNavigation();
   const fetchPage = useCallback(
     async (providerId: string, pageOffset: number) => {
       if (mode === 'favorites') {
@@ -222,9 +327,14 @@ export function SeriesScreen() {
     [favoriteIds],
   );
 
-  const openSeries = useCallback(async (id: string) => {
-    await mediaCollectionRepo.markRecent('series', id);
-  }, []);
+  const openSeries = useCallback(
+    async (id: string) => {
+      await mediaCollectionRepo.markRecent('series', id);
+      // @ts-expect-error – navigator not typed here
+      navigation.navigate('SeriesDetail', { seriesId: id });
+    },
+    [navigation],
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: SeriesItem }) => (
@@ -238,40 +348,33 @@ export function SeriesScreen() {
     [favoriteIds, openSeries, toggleFavorite],
   );
 
+  const currentCatName =
+    categories.find((c) => c.id === selectedCategoryId)?.name || 'Alle Serien';
+
   return (
     <View className="flex-1" style={{ backgroundColor: '#0e0e12' }}>
       <ContentModeTabs mode={mode} fullscreen={false} onSelect={setMode} />
 
-      <SearchInputWithButton placeholder="Serien suchen..." onSubmit={setQuery} />
-
-      {categories.length > 0 && mode === 'all' && (
-        <View style={{ height: 52, justifyContent: 'center' }}>
-          <FlatList
-            horizontal
-            data={[{ id: '__all__', name: 'All', providerId: selectedProviderId ?? '' }, ...categories]}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingRight: 32, paddingBottom: 10, gap: 8 }}
-            renderItem={({ item, index }) => {
-            const selected =
-              (item.id === '__all__' && selectedCategoryId == null) || item.id === selectedCategoryId;
-            const rawName = (item.name ?? '').trim();
-            const label =
-              item.id === '__all__'
-                ? 'Alle Serien'
-                : rawName.length > 0
-                ? rawName
-                : `Kategorie ${index}`;
-            return (
-              <CategoryChip
-                label={label}
-                selected={selected}
-                onPress={() => setSelectedCategoryId(item.id === '__all__' ? null : item.id)}
-              />
-            );
-          }}
-          />
+      <View className="flex-row items-center px-4 py-2 gap-x-3">
+        <View className="flex-1">
+          <SearchInputWithButton placeholder="Serien suchen..." onSubmit={setQuery} />
         </View>
-      )}
+
+        {mode === 'all' && (
+          <FilterButton
+            label={currentCatName}
+            onPress={() => setIsCatModalVisible(true)}
+          />
+        )}
+      </View>
+
+      <CategoryModal
+        visible={isCatModalVisible}
+        categories={categories}
+        selectedId={selectedCategoryId}
+        onClose={() => setIsCatModalVisible(false)}
+        onSelect={(id: string | null) => setSelectedCategoryId(id)}
+      />
 
       {loading ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>

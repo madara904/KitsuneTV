@@ -70,3 +70,11 @@ export interface SeriesItem {
 }
 
 export type MediaContentType = 'movie' | 'series';
+
+/** VOD item for player (movie or later: series episode) */
+export interface MoviePlayback {
+  type: 'movie';
+  id: string;
+  streamUrl: string;
+  title: string;
+}

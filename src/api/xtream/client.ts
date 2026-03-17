@@ -6,6 +6,7 @@ import type {
   XtreamCategory,
   XtreamLiveStream,
   XtreamSeriesItem,
+  XtreamSeriesInfoResponse,
   XtreamShortEpgResponse,
   XtreamVodStream,
 } from './types';
@@ -114,4 +115,19 @@ export async function getSeries(
   const categoryPart = categoryId != null ? `&category_id=${encodeURIComponent(categoryId)}` : '';
   const url = `${baseUrl(config)}&action=get_series${categoryPart}`;
   return fetchArray<XtreamSeriesItem>(url, 'Xtream get_series');
+}
+
+export async function getSeriesInfo(
+  config: XtreamConfig,
+  seriesId: number | string,
+): Promise<XtreamSeriesInfoResponse | null> {
+  const url = `${baseUrl(config)}&action=get_series_info&series_id=${encodeURIComponent(seriesId)}`;
+  try {
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) return null;
+    const data: unknown = await res.json();
+    return (data ?? null) as XtreamSeriesInfoResponse | null;
+  } catch {
+    return null;
+  }
 }
