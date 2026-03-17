@@ -65,6 +65,47 @@ const MovieRow = memo(function MovieRow({ item, isFavorite, onOpen, onToggleFavo
   );
 });
 
+type CategoryChipProps = {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+};
+
+const CategoryChip = memo(function CategoryChip({ label, selected, onPress }: CategoryChipProps) {
+  const [isFocused, setIsFocused] = useState(false);
+  const textColor = selected ? '#ffffff' : '#e5e7eb';
+  const chipBackground = selected ? '#7c3aed' : '#111827';
+  return (
+    <Pressable
+      onPress={onPress}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      focusable
+      style={{
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 999,
+        borderWidth: isFocused ? 3 : 1.5,
+        borderColor: isFocused ? '#d8b4fe' : selected ? '#a855f7' : '#3f3f46',
+        backgroundColor: chipBackground,
+        minWidth: 80,
+      }}
+    >
+      <Text
+        style={{
+          color: textColor,
+          fontSize: 13,
+          fontWeight: '600',
+          lineHeight: 16,
+        }}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+});
+
 export function MoviesScreen() {
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -75,6 +116,7 @@ export function MoviesScreen() {
   const [mode, setMode] = useState<ContentMode>('all');
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
   const fetchPage = useCallback(
@@ -115,22 +157,27 @@ export function MoviesScreen() {
   );
 
   const loadFirstPage = useCallback(async () => {
-    const list = await providerService.list();
-    const providerId = selectedProviderId ?? list[0]?.id ?? null;
-    setSelectedProviderId(providerId);
-    if (!providerId) return;
+    setLoading(true);
+    try {
+      const list = await providerService.list();
+      const providerId = selectedProviderId ?? list[0]?.id ?? null;
+      setSelectedProviderId(providerId);
+      if (!providerId) return;
 
-    const [cats, favIds, page] = await Promise.all([
-      mediaService.getMovieCategories(providerId),
-      mediaCollectionRepo.favoriteIds('movie'),
-      fetchPage(providerId, 0),
-    ]);
+      const [cats, favIds, page] = await Promise.all([
+        mediaService.getMovieCategories(providerId),
+        mediaCollectionRepo.favoriteIds('movie'),
+        fetchPage(providerId, 0),
+      ]);
 
-    setCategories(cats);
-    setFavoriteIds(new Set(favIds));
-    setItems(page.rows);
-    setOffset(page.rows.length);
-    setHasMore(page.rows.length === PAGE_SIZE);
+      setCategories(cats);
+      setFavoriteIds(new Set(favIds));
+      setItems(page.rows);
+      setOffset(page.rows.length);
+      setHasMore(page.rows.length === PAGE_SIZE);
+    } finally {
+      setLoading(false);
+    }
   }, [selectedProviderId, fetchPage]);
 
   const loadMore = useCallback(async () => {
@@ -190,7 +237,7 @@ export function MoviesScreen() {
         placeholder="Movies suchen..."
         onSearchChange={setQuery}
         minLength={2}
-        debounceMs={400}
+        debounceMs={25}
       />
 
       {categories.length > 0 && mode === 'all' && (
@@ -210,41 +257,23 @@ export function MoviesScreen() {
                 : rawName.length > 0
                 ? rawName
                 : `Kategorie ${index}`;
-            const textColor = selected ? '#ffffff' : '#e5e7eb';
-            const chipBackground = selected ? '#7c3aed' : '#111827';
             return (
-              <Pressable
+              <CategoryChip
+                label={label}
+                selected={selected}
                 onPress={() => setSelectedCategoryId(item.id === '__all__' ? null : item.id)}
-                focusable
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  borderWidth: 1.5,
-                  borderColor: selected ? '#a855f7' : '#3f3f46',
-                  backgroundColor: chipBackground,
-                  minWidth: 80,
-                }}
-              >
-                <Text
-                  style={{
-                    color: textColor,
-                    fontSize: 13,
-                    fontWeight: '600',
-                    lineHeight: 16,
-                  }}
-                  numberOfLines={1}
-                >
-                  {label}
-                </Text>
-              </Pressable>
+              />
             );
           }}
           />
         </View>
       )}
 
-      {items.length === 0 ? (
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#a78bfa" />
+        </View>
+      ) : items.length === 0 ? (
         <EmptyState
           iconName="movie-open-outline"
           title="No movies"

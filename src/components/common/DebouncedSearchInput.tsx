@@ -11,7 +11,7 @@ export const DebouncedSearchInput = memo(function DebouncedSearchInput({
   placeholder,
   onSearchChange,
   minLength = 2,
-  debounceMs = 400,
+  debounceMs,
   focusable = true,
 }: {
   placeholder: string;
