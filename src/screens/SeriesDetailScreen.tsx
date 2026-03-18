@@ -1,5 +1,14 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Text, View, findNodeHandle } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  findNodeHandle,
+} from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { mediaService } from '../services/mediaService';
 import { mediaCollectionRepo } from '../db/repositories/mediaCollectionRepo';
@@ -40,19 +49,19 @@ const SeasonChip = memo(function SeasonChip({
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       focusable
-      className={`px-4 py-2 rounded-xl border-2 border-solid items-center ${
+      className={`items-center rounded-xl border-2 px-4 py-2 ${
         focused
           ? 'border-purple-300 bg-slate-700'
           : selected
-          ? 'border-purple-600 bg-purple-900/40'
-          : 'border-slate-700 bg-slate-900'
+            ? 'border-purple-600 bg-purple-900/40'
+            : 'border-slate-700 bg-slate-900'
       }`}
     >
       <Text
         className={
           selected || focused
-            ? 'text-sm text-white font-semibold'
-            : 'text-sm text-slate-300 font-medium'
+            ? 'text-sm font-semibold text-white'
+            : 'text-sm font-medium text-slate-300'
         }
       >
         {label}
@@ -74,45 +83,34 @@ const SeasonModal = memo(function SeasonModal({
   onSelect: (seasonNumber: number) => void;
   onClose: () => void;
 }) {
-  const filteredSeasons = useMemo(() => seasons, [seasons]);
-
   if (!visible) return null;
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1 justify-center items-center bg-black/80 px-10">
-        <View className="w-full max-w-[480px] bg-slate-950 rounded-3xl p-6 border border-slate-800">
-          <Text className="text-xl font-bold text-slate-50 mb-4 text-center">
-            Staffel wählen
+      <View className="flex-1 items-center justify-center bg-black/80 px-10">
+        <View className="w-full max-w-[480px] rounded-3xl border border-slate-800 bg-slate-950 p-6">
+          <Text className="mb-4 text-center text-xl font-bold text-slate-50">
+            Staffel waehlen
           </Text>
 
-          <View className="flex-row items-center mb-4 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700">
-            <MaterialCommunityIcons
-              name="magnify"
-              size={18}
-              color="#9ca3af"
-            />
-            <Text
-              className="ml-2 text-xs text-slate-400"
-              numberOfLines={1}
-            >
+          <View className="mb-4 flex-row items-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2">
+            <MaterialCommunityIcons name="magnify" size={18} color="#9ca3af" />
+            <Text className="ml-2 text-xs text-slate-400" numberOfLines={1}>
               Tippe die Staffelnummer, um zu filtern.
             </Text>
           </View>
 
-          <View className="flex-row flex-wrap gap-3 mb-4">
-            {filteredSeasons.length === 0 ? (
-              <Text className="text-sm text-slate-500">
-                Keine Staffeln gefunden.
-              </Text>
+          <View className="mb-4 flex-row flex-wrap gap-3">
+            {seasons.length === 0 ? (
+              <Text className="text-sm text-slate-500">Keine Staffeln gefunden.</Text>
             ) : (
-              filteredSeasons.map((s) => (
+              seasons.map((season) => (
                 <SeasonChip
-                  key={s.id}
-                  label={`Staffel ${s.seasonNumber}`}
-                  selected={s.seasonNumber === selectedSeasonNumber}
+                  key={season.id}
+                  label={`Staffel ${season.seasonNumber}`}
+                  selected={season.seasonNumber === selectedSeasonNumber}
                   onPress={() => {
-                    onSelect(s.seasonNumber);
+                    onSelect(season.seasonNumber);
                     onClose();
                   }}
                 />
@@ -123,9 +121,9 @@ const SeasonModal = memo(function SeasonModal({
           <Pressable
             onPress={onClose}
             focusable
-            className="mt-1 py-3 rounded-xl items-center border border-slate-700 bg-slate-800"
+            className="mt-1 items-center rounded-xl border border-slate-700 bg-slate-800 py-3"
           >
-            <Text className="text-slate-200 font-semibold">Abbrechen</Text>
+            <Text className="font-semibold text-slate-200">Abbrechen</Text>
           </Pressable>
         </View>
       </View>
@@ -142,48 +140,36 @@ const EpisodeCard = memo(function EpisodeCard({
 }) {
   const [focused, setFocused] = useState(false);
   const imageUri = episode.imageUrl?.trim() || null;
+
   return (
     <Pressable
       onPress={() => onPlay(episode)}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       focusable
-      className={`min-w-[280px] max-w-[380px] flex-1 rounded-2xl overflow-hidden mr-3 mb-3 border-2 border-solid ${
+      className={`mb-3 mr-3 min-w-[280px] max-w-[380px] flex-1 overflow-hidden rounded-2xl border-2 ${
         focused ? 'border-purple-300 bg-slate-800' : 'border-slate-800 bg-slate-900/70'
       }`}
     >
       <View className="flex-row">
-        <View className="w-[120px] h-[68px] rounded-l-xl bg-slate-800 shrink-0 overflow-hidden">
+        <View className="h-[68px] w-[120px] shrink-0 overflow-hidden rounded-l-xl bg-slate-800">
           {imageUri ? (
-            <Image
-              source={{ uri: imageUri }}
-              className="w-full h-full"
-              resizeMode="cover"
-            />
+            <Image source={{ uri: imageUri }} className="h-full w-full" resizeMode="cover" />
           ) : (
-            <View className="w-full h-full items-center justify-center">
+            <View className="h-full w-full items-center justify-center">
               <MaterialCommunityIcons name="play-circle-outline" size={28} color="#64748b" />
             </View>
           )}
         </View>
-        <View className="flex-1 p-3 justify-center min-w-0">
-          <Text
-            className="text-xs text-slate-400 font-medium mb-0.5"
-            numberOfLines={1}
-          >
+        <View className="min-w-0 flex-1 justify-center p-3">
+          <Text className="mb-0.5 text-xs font-medium text-slate-400" numberOfLines={1}>
             S{episode.seasonNumber} · E{episode.episodeNumber}
           </Text>
-          <Text
-            className="text-sm text-slate-50 font-semibold"
-            numberOfLines={2}
-          >
+          <Text className="text-sm font-semibold text-slate-50" numberOfLines={2}>
             {episode.title}
           </Text>
           {episode.summary ? (
-            <Text
-              className="text-[11px] text-slate-400 mt-1"
-              numberOfLines={2}
-            >
+            <Text className="mt-1 text-[11px] text-slate-400" numberOfLines={2}>
               {episode.summary}
             </Text>
           ) : null}
@@ -199,11 +185,9 @@ export function SeriesDetailScreen({ route, navigation }: any) {
   const [favorite, setFavorite] = useState(false);
   const [loading, setLoading] = useState(true);
   const [focusedButton, setFocusedButton] = useState<FocusedButton>(null);
-
   const backButtonRef = useRef<View | null>(null);
   const ctaPlayRef = useRef<View | null>(null);
   const [backButtonHandle, setBackButtonHandle] = useState<number | null>(null);
-
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonNumber, setSelectedSeasonNumber] = useState<number | null>(null);
   const [seasonModalVisible, setSeasonModalVisible] = useState(false);
@@ -218,15 +202,17 @@ export function SeriesDetailScreen({ route, navigation }: any) {
         const favIds = await mediaCollectionRepo.favoriteIds('series');
         if (!cancelled) setFavorite(favIds.includes(seriesId));
         if (cancelled) return;
+
         const { seriesInfo, seasons: fetchedSeasons } =
           await mediaService.getSeriesSeasonsAndEpisodes(seriesId);
+
         if (!cancelled) {
           setSeriesDescription(seriesInfo?.description ?? null);
           setSeasons(
-            fetchedSeasons.map((s, idx) => ({
-              id: `season_${s.seasonNumber}_${idx}`,
-              seasonNumber: s.seasonNumber,
-              episodes: s.episodes,
+            fetchedSeasons.map((season, index) => ({
+              id: `season_${season.seasonNumber}_${index}`,
+              seasonNumber: season.seasonNumber,
+              episodes: season.episodes,
             })),
           );
           if (fetchedSeasons.length > 0) {
@@ -237,6 +223,7 @@ export function SeriesDetailScreen({ route, navigation }: any) {
         if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -249,8 +236,18 @@ export function SeriesDetailScreen({ route, navigation }: any) {
   }, [favorite, seriesId]);
 
   const currentSeason = useMemo(
-    () => seasons.find((s) => s.seasonNumber === selectedSeasonNumber) ?? null,
+    () => seasons.find((season) => season.seasonNumber === selectedSeasonNumber) ?? null,
     [seasons, selectedSeasonNumber],
+  );
+
+  const allEpisodes = useMemo(
+    () =>
+      [...seasons]
+        .sort((a, b) => a.seasonNumber - b.seasonNumber)
+        .flatMap((season) =>
+          [...season.episodes].sort((a, b) => a.episodeNumber - b.episodeNumber),
+        ),
+    [seasons],
   );
 
   const episodes = currentSeason?.episodes ?? [];
@@ -258,6 +255,7 @@ export function SeriesDetailScreen({ route, navigation }: any) {
   const handlePlayEpisode = useCallback(
     async (episode: Episode) => {
       if (!episode.streamUrl) return;
+
       console.info(
         '[SeriesEpisodePlay]',
         JSON.stringify({
@@ -268,16 +266,28 @@ export function SeriesDetailScreen({ route, navigation }: any) {
           streamUrl: episode.streamUrl,
         }),
       );
+
       await mediaCollectionRepo.markRecent('series', seriesId);
       await watchProgressRepo.save('series', seriesId, episode.id, 0, undefined);
+
+      const episodeQueue = allEpisodes
+        .filter((item) => !!item.streamUrl)
+        .map((item) => ({
+          movieId: seriesId,
+          episodeId: item.id,
+          streamUrlOverride: item.streamUrl as string,
+          titleOverride: `${series?.name ?? ''} - S${item.seasonNumber}E${item.episodeNumber}`,
+        }));
+
       navigation.navigate('MoviePlayer', {
+        episodeQueue,
         movieId: seriesId,
         episodeId: episode.id,
         streamUrlOverride: episode.streamUrl,
-        titleOverride: `${series?.name ?? ''} – S${episode.seasonNumber}E${episode.episodeNumber}`,
+        titleOverride: `${series?.name ?? ''} - S${episode.seasonNumber}E${episode.episodeNumber}`,
       });
     },
-    [seriesId, navigation, series?.name],
+    [allEpisodes, navigation, series?.name, seriesId],
   );
 
   if (loading) {
@@ -291,19 +301,19 @@ export function SeriesDetailScreen({ route, navigation }: any) {
   if (!series) {
     return (
       <View className="flex-1 items-center justify-center bg-[#05050a]">
-        <Text className="text-lg text-slate-100 mb-3">Serie nicht gefunden</Text>
+        <Text className="mb-3 text-lg text-slate-100">Serie nicht gefunden</Text>
         <Pressable
           onPress={() => navigation.goBack()}
           onFocus={() => setFocusedButton('back')}
           onBlur={() => setFocusedButton(null)}
           focusable
-          className={`px-5 py-2 rounded-full border ${
+          className={`rounded-full border px-5 py-2 ${
             focusedButton === 'back'
-              ? 'bg-slate-800 border-purple-300'
-              : 'bg-slate-900 border-slate-700'
+              ? 'border-purple-300 bg-slate-800'
+              : 'border-slate-700 bg-slate-900'
           }`}
         >
-          <Text className="text-slate-100">Zurück</Text>
+          <Text className="text-slate-100">Zurueck</Text>
         </Pressable>
       </View>
     );
@@ -313,8 +323,7 @@ export function SeriesDetailScreen({ route, navigation }: any) {
 
   return (
     <View className="flex-1 bg-[#05050a]">
-      {/* Top bar with back */}
-      <View className="flex-row items-center px-8 pt-6 pb-2">
+      <View className="flex-row items-center px-8 pb-2 pt-6">
         <Pressable
           ref={(node) => {
             backButtonRef.current = node;
@@ -324,145 +333,130 @@ export function SeriesDetailScreen({ route, navigation }: any) {
           onFocus={() => setFocusedButton('back')}
           onBlur={() => setFocusedButton(null)}
           focusable
-          className={`flex-row items-center px-4 py-2 rounded-full border ${
+          className={`flex-row items-center rounded-full border px-4 py-2 ${
             focusedButton === 'back'
-              ? 'bg-slate-900 border-purple-300'
-              : 'bg-transparent border-slate-700'
+              ? 'border-purple-300 bg-slate-900'
+              : 'border-slate-700 bg-transparent'
           }`}
         >
           <MaterialCommunityIcons name="arrow-left" size={20} color="#e5e7eb" />
-          <Text className="text-slate-100 ml-2">Zurück</Text>
+          <Text className="ml-2 text-slate-100">Zurueck</Text>
         </Pressable>
       </View>
 
-      {/* Split layout: top info row + bottom seasons/episodes */}
       <ScrollView contentContainerStyle={{}}>
         <View className="px-8 pb-10">
-        {/* Top: image + CTA */}
-        <View className="flex-row mt-4 mb-8">
-          <View className="w-[260px] h-[320px] rounded-[32px] overflow-hidden bg-slate-900">
-            {posterUri ? (
-              <Image source={{ uri: posterUri }} className="w-full h-full" resizeMode="cover" />
-            ) : (
-              <View className="flex-1 items-center justify-center">
-                <MaterialCommunityIcons name="television-classic" size={72} color="#4b5563" />
+          <View className="mb-8 mt-4 flex-row">
+            <View className="h-[320px] w-[260px] overflow-hidden rounded-[32px] bg-slate-900">
+              {posterUri ? (
+                <Image source={{ uri: posterUri }} className="h-full w-full" resizeMode="cover" />
+              ) : (
+                <View className="flex-1 items-center justify-center">
+                  <MaterialCommunityIcons name="television-classic" size={72} color="#4b5563" />
+                </View>
+              )}
+            </View>
+
+            <View className="ml-10 flex-1 justify-center">
+              <Text className="mb-3 text-2xl font-extrabold text-slate-50" numberOfLines={2}>
+                {series.name}
+              </Text>
+
+              <Text className="mb-6 max-w-[620px] text-sm leading-5 text-slate-400" numberOfLines={6}>
+                {seriesDescription?.trim() ||
+                  'Keine Beschreibung vom Provider verfuegbar. Waehle eine Episode aus und lehne dich zurueck.'}
+              </Text>
+
+              <View className="mb-4 flex-row items-center">
+                <Pressable
+                  ref={ctaPlayRef}
+                  onPress={() => {
+                    const firstEpisode = episodes[0];
+                    if (firstEpisode) handlePlayEpisode(firstEpisode);
+                  }}
+                  onFocus={() => setFocusedButton('play')}
+                  onBlur={() => setFocusedButton(null)}
+                  focusable
+                  className={`mr-4 flex-row items-center rounded-full border px-8 py-3 ${
+                    focusedButton === 'play'
+                      ? 'border-purple-100 bg-purple-300'
+                      : 'border-transparent bg-purple-500'
+                  }`}
+                  {...(backButtonHandle != null
+                    ? ({ nextFocusUp: backButtonHandle } as Record<string, number>)
+                    : {})}
+                >
+                  <MaterialCommunityIcons name="play" size={22} color="#020617" />
+                  <Text className="ml-2 text-base font-bold text-slate-950">Abspielen</Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={toggleFavorite}
+                  onFocus={() => setFocusedButton('favorite')}
+                  onBlur={() => setFocusedButton(null)}
+                  focusable
+                  className={`flex-row items-center rounded-full border px-5 py-3 ${
+                    focusedButton === 'favorite'
+                      ? 'border-purple-200 bg-slate-900'
+                      : favorite
+                        ? 'border-rose-400 bg-rose-900/20'
+                        : 'border-slate-700 bg-transparent'
+                  }`}
+                  {...(backButtonHandle != null
+                    ? ({ nextFocusUp: backButtonHandle } as Record<string, number>)
+                    : {})}
+                >
+                  <MaterialCommunityIcons
+                    name={favorite ? 'heart' : 'heart-outline'}
+                    size={20}
+                    color={favorite ? '#fb7185' : '#9ca3af'}
+                  />
+                  <Text className="ml-2 text-sm text-slate-100">
+                    {favorite ? 'In Favoriten' : 'Zu Favoriten'}
+                  </Text>
+                </Pressable>
               </View>
+            </View>
+          </View>
+
+          <View className="mb-3 flex-row items-center justify-between">
+            <Text className="text-base font-semibold text-slate-200">Episoden</Text>
+
+            <Pressable
+              onPress={() => {
+                if (seasons.length > 1) setSeasonModalVisible(true);
+              }}
+              onFocus={() => setFocusedButton('season')}
+              onBlur={() => setFocusedButton(null)}
+              focusable
+              className={`flex-row items-center rounded-xl border px-4 py-2 ${
+                focusedButton === 'season'
+                  ? 'border-purple-300 bg-slate-800'
+                  : 'border-slate-700 bg-slate-900'
+              }`}
+            >
+              <Text className="mr-2 text-sm text-slate-100">
+                Staffel {selectedSeasonNumber ?? 1}
+              </Text>
+              <MaterialCommunityIcons name="chevron-down" size={18} color="#e5e7eb" />
+            </Pressable>
+          </View>
+
+          <View className="flex-row flex-wrap">
+            {episodes.length === 0 ? (
+              <Text className="mt-2 text-sm text-slate-500">Keine Episoden verfuegbar.</Text>
+            ) : (
+              episodes.map((episode) => (
+                <EpisodeCard key={episode.id} episode={episode} onPlay={handlePlayEpisode} />
+              ))
             )}
           </View>
 
-          <View className="flex-1 ml-10 justify-center">
-            <Text
-              className="text-slate-50 text-2xl font-extrabold mb-3"
-              numberOfLines={2}
-            >
-              {series.name}
-            </Text>
-
-            <Text
-              className="text-sm text-slate-400 leading-5 max-w-[620px] mb-6"
-              numberOfLines={6}
-            >
-              {seriesDescription?.trim() ||
-                'Keine Beschreibung vom Provider verfügbar. Wähle eine Episode aus und lehne dich zurück.'}
-            </Text>
-
-            <View className="flex-row items-center mb-4">
-              <Pressable
-                ref={ctaPlayRef}
-                onPress={() => {
-                  // default: first episode of current season (if available)
-                  const first = episodes[0];
-                  if (first) handlePlayEpisode(first);
-                }}
-                onFocus={() => setFocusedButton('play')}
-                onBlur={() => setFocusedButton(null)}
-                focusable
-                className={`flex-row items-center px-8 py-3 rounded-full mr-4 border ${
-                  focusedButton === 'play'
-                    ? 'bg-purple-300 border-purple-100'
-                    : 'bg-purple-500 border-transparent'
-                }`}
-                {...(backButtonHandle != null
-                  ? ({
-                      nextFocusUp: backButtonHandle,
-                    } as Record<string, number>)
-                  : {})}
-              >
-                <MaterialCommunityIcons name="play" size={22} color="#020617" />
-                <Text className="text-base font-bold text-slate-950 ml-2">Abspielen</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={toggleFavorite}
-                onFocus={() => setFocusedButton('favorite')}
-                onBlur={() => setFocusedButton(null)}
-                focusable
-                className={`flex-row items-center px-5 py-3 rounded-full border ${
-                  focusedButton === 'favorite'
-                    ? 'border-purple-200 bg-slate-900'
-                    : favorite
-                    ? 'border-rose-400 bg-rose-900/20'
-                    : 'border-slate-700 bg-transparent'
-                }`}
-                {...(backButtonHandle != null
-                  ? ({
-                      nextFocusUp: backButtonHandle,
-                    } as Record<string, number>)
-                  : {})}
-              >
-                <MaterialCommunityIcons
-                  name={favorite ? 'heart' : 'heart-outline'}
-                  size={20}
-                  color={favorite ? '#fb7185' : '#9ca3af'}
-                />
-                <Text className="text-sm text-slate-100 ml-2">
-                  {favorite ? 'In Favoriten' : 'Zu Favoriten'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-
-        {/* Bottom: season dropdown + episodes grid */}
-        <View className="mb-3 flex-row items-center justify-between">
-          <Text className="text-slate-200 text-base font-semibold">Episoden</Text>
-
-          <Pressable
-            onPress={() => {
-              if (seasons.length > 1) setSeasonModalVisible(true);
-            }}
-            onFocus={() => setFocusedButton('season')}
-            onBlur={() => setFocusedButton(null)}
-            focusable
-            className={`flex-row items-center px-4 py-2 rounded-xl border ${
-              focusedButton === 'season'
-                ? 'bg-slate-800 border-purple-300'
-                : 'bg-slate-900 border-slate-700'
-            }`}
-          >
-            <Text className="text-sm text-slate-100 mr-2">
-              Staffel {selectedSeasonNumber ?? 1}
-            </Text>
-            <MaterialCommunityIcons name="chevron-down" size={18} color="#e5e7eb" />
-          </Pressable>
-        </View>
-
-        <View className="flex-row flex-wrap">
-          {episodes.length === 0 ? (
-            <Text className="text-sm text-slate-500 mt-2">
-              Keine Episoden verfügbar.
-            </Text>
-          ) : (
-            episodes.map((ep) => (
-              <EpisodeCard key={ep.id} episode={ep} onPlay={handlePlayEpisode} />
-            ))
-          )}
-        </View>
           <SeasonModal
             visible={seasonModalVisible}
             seasons={seasons}
             selectedSeasonNumber={selectedSeasonNumber}
-            onSelect={(sn) => setSelectedSeasonNumber(sn)}
+            onSelect={(seasonNumber) => setSelectedSeasonNumber(seasonNumber)}
             onClose={() => setSeasonModalVisible(false)}
           />
         </View>
@@ -470,4 +464,3 @@ export function SeriesDetailScreen({ route, navigation }: any) {
     </View>
   );
 }
-

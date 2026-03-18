@@ -6,23 +6,46 @@ import { mediaService } from '../services/mediaService';
 import { watchProgressRepo } from '../db/repositories/watchProgressRepo';
 import type { Movie } from '../lib/types';
 import { ResumePromptModal } from '../components/common/ResumePromptModal';
+import { FullscreenPlaybackOverlay } from '../components/player/FullscreenPlaybackOverlay';
+import type { PlayerOptionMenuItem } from '../components/player/PlayerOptionMenu';
 
 const SAVE_INTERVAL_MS = 8000;
 const MIN_RESUME_SEC = 3;
 const PROGRESS_UI_UPDATE_MS = 1000;
 const VLC_PROGRESS_SCALE = 1000;
+const FULLSCREEN_CONTROLS_HIDE_DELAY_MS = 3000;
+const VLC_PROGRESS_UPDATE_INTERVAL_MS = 500;
 
 type FocusedControl = 'play' | 'rewind' | 'forward' | 'fullscreen' | 'back' | null;
-type ViewMode = 'fit' | 'sbs-left' | 'sbs-right';
 type AudioTrackInfo = { id: number; name: string };
+type TextTrackInfo = { id: number; name: string };
+type EpisodeQueueItem = {
+  movieId: string;
+  episodeId: string;
+  streamUrlOverride: string;
+  titleOverride: string;
+};
 type PlayerLoadEvent = {
   duration?: number;
   audioTracks?: AudioTrackInfo[];
+  textTracks?: TextTrackInfo[];
   videoSize?: { width?: number; height?: number };
 };
 
 export function MoviePlayerScreen({ route, navigation }: any) {
-  const { movieId, episodeId, streamUrlOverride, titleOverride } = route.params ?? {};
+  const {
+    movieId,
+    episodeId,
+    streamUrlOverride,
+    titleOverride,
+    episodeQueue,
+  }: {
+    movieId?: string;
+    episodeId?: string;
+    streamUrlOverride?: string;
+    titleOverride?: string;
+    episodeQueue?: EpisodeQueueItem[] | null;
+  } = route.params ?? {};
   const isSeriesEpisode = !!episodeId && !!streamUrlOverride;
   const [movie, setMovie] = useState<Movie | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,11 +57,16 @@ export function MoviePlayerScreen({ route, navigation }: any) {
   const [focusedControl, setFocusedControl] = useState<FocusedControl>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [resumePromptVisible, setResumePromptVisible] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('fit');
   const [audioTrackId, setAudioTrackId] = useState<number | undefined>(undefined);
+  const [textTracks, setTextTracks] = useState<TextTrackInfo[]>([]);
+  const [textTrackId, setTextTrackId] = useState<number | undefined>(undefined);
+  const [fullscreenControlsVisible, setFullscreenControlsVisible] = useState(false);
+  const [fullscreenControlsTick, setFullscreenControlsTick] = useState(0);
+  const [fullscreenOverlayLocked, setFullscreenOverlayLocked] = useState(false);
 
   const videoRef = useRef<any>(null);
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fullscreenControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedRef = useRef(false);
   const currentTimeRef = useRef(0);
   const durationRef = useRef(0);
@@ -51,6 +79,10 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     (async () => {
       try {
         if (isSeriesEpisode) {
+          if (!movieId || !episodeId || !streamUrlOverride) {
+            if (!cancelled) setMovie(null);
+            return;
+          }
           const synthetic: Movie = {
             id: movieId,
             providerId: '',
@@ -74,6 +106,10 @@ export function MoviePlayerScreen({ route, navigation }: any) {
             setInitialPositionSec(0);
           }
         } else {
+          if (!movieId) {
+            if (!cancelled) setMovie(null);
+            return;
+          }
           const [row] = await mediaService.getMoviesByIds([movieId]);
           if (!cancelled) setMovie(row ?? null);
           const progress = await watchProgressRepo.get('movie', movieId);
@@ -124,6 +160,10 @@ export function MoviePlayerScreen({ route, navigation }: any) {
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (fullscreen) {
+        if (!fullscreenControlsVisible) {
+          setFullscreenControlsVisible(true);
+          return true;
+        }
         setFullscreen(false);
         return true;
       }
@@ -131,7 +171,20 @@ export function MoviePlayerScreen({ route, navigation }: any) {
       return true;
     });
     return () => sub.remove();
-  }, [navigation, fullscreen]);
+  }, [navigation, fullscreen, fullscreenControlsVisible]);
+
+  const clearFullscreenControlsTimer = useCallback(() => {
+    if (fullscreenControlsTimerRef.current) {
+      clearTimeout(fullscreenControlsTimerRef.current);
+      fullscreenControlsTimerRef.current = null;
+    }
+  }, []);
+
+  const showFullscreenControls = useCallback(() => {
+    clearFullscreenControlsTimer();
+    setFullscreenControlsVisible(true);
+    setFullscreenControlsTick((value) => value + 1);
+  }, [clearFullscreenControlsTimer]);
 
   const handleProgress = useCallback(
     (e: Readonly<{ currentTime: number; playableDuration: number; seekableDuration: number }>) => {
@@ -235,17 +288,20 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     loadedRef.current = true;
     setError(null);
 
-    console.log('[MoviePlayerScreen][VLC onLoad]', {
-      movieId,
-      episodeId,
-      streamUrl: movie?.streamUrl,
-      durationRaw: event?.duration,
-      durationSec: event?.duration ? event.duration / VLC_PROGRESS_SCALE : 0,
-      videoSize: event?.videoSize ?? null,
-      audioTracks: event?.audioTracks ?? [],
-      selectedAudioTrackId: audioTrackId ?? null,
-      viewMode,
-    });
+    if (__DEV__) {
+      console.log('[MoviePlayerScreen][VLC onLoad]', {
+        movieId,
+        episodeId,
+        streamUrl: movie?.streamUrl,
+        durationRaw: event?.duration,
+        durationSec: event?.duration ? event.duration / VLC_PROGRESS_SCALE : 0,
+        videoSize: event?.videoSize ?? null,
+        audioTracks: event?.audioTracks ?? [],
+        textTracks: event?.textTracks ?? [],
+        selectedAudioTrackId: audioTrackId ?? null,
+        selectedTextTrackId: textTrackId ?? null,
+      });
+    }
 
     const duration = event?.duration ? event.duration / VLC_PROGRESS_SCALE : 0;
     if (duration > 0) {
@@ -260,8 +316,14 @@ export function MoviePlayerScreen({ route, navigation }: any) {
       }
     }
 
+    setTextTracks(event?.textTracks ?? []);
+    if (textTrackId == null && event?.textTracks?.some((track) => track.id < 0)) {
+      const disabledTrack = event.textTracks.find((track) => track.id < 0);
+      setTextTrackId(disabledTrack?.id);
+    }
+
     applyPendingSeek();
-  }, [applyPendingSeek, audioTrackId, episodeId, movie?.streamUrl, movieId, viewMode]);
+  }, [applyPendingSeek, audioTrackId, episodeId, movie?.streamUrl, movieId, textTrackId]);
 
   const formatTime = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return '0:00';
@@ -276,8 +338,6 @@ export function MoviePlayerScreen({ route, navigation }: any) {
       '--network-caching=2000',
       '--live-caching=2500',
       '--file-caching=2000',
-      '--audio-resampler=soxr',
-      '--no-audio-time-stretch',
       '--http-reconnect',
     ],
     [],
@@ -289,6 +349,14 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     initOptions: [...initOptions],
   }), [movie?.streamUrl, initOptions]);
 
+  const nextEpisode = useMemo(() => {
+    if (!episodeId || !episodeQueue?.length) return null;
+    const currentIndex = episodeQueue.findIndex((item) => item.episodeId === episodeId);
+    return currentIndex >= 0 ? episodeQueue[currentIndex + 1] ?? null : null;
+  }, [episodeId, episodeQueue]);
+
+  const modalVisible = resumePromptVisible && initialPositionSec > 0;
+
   useEffect(() => {
     loadedRef.current = false;
     currentTimeRef.current = 0;
@@ -298,38 +366,114 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     setCurrentTimeSec(0);
     setDurationSec(0);
     setError(null);
-    setViewMode('fit');
     setAudioTrackId(undefined);
+    setTextTracks([]);
+    setTextTrackId(undefined);
+    setFullscreenControlsVisible(false);
+    setFullscreenOverlayLocked(false);
   }, [movie?.streamUrl]);
-
-  const cycleViewMode = useCallback(() => {
-    setViewMode((current) => {
-      if (current === 'fit') return 'sbs-left';
-      if (current === 'sbs-left') return 'sbs-right';
-      return 'fit';
-    });
-  }, []);
-
-  const playerViewportStyle = useMemo(() => {
-    if (viewMode === 'fit') {
-      return { width: '100%' as const, height: '100%' as const, left: 0 as const };
+  
+  useEffect(() => {
+    if (!fullscreen || modalVisible || !!error || fullscreenOverlayLocked) {
+      clearFullscreenControlsTimer();
+      if (!fullscreen) {
+        setFullscreenControlsVisible(false);
+      }
+      return;
     }
 
-    return {
-      position: 'absolute' as const,
-      top: 0,
-      bottom: 0,
-      width: '200%' as const,
-      height: '100%' as const,
-      left: viewMode === 'sbs-left' ? 0 : '-100%',
-    };
-  }, [viewMode]);
+    if (!fullscreenControlsVisible) {
+      clearFullscreenControlsTimer();
+      return;
+    }
 
-  const viewModeLabel = viewMode === 'fit'
-    ? 'Fit'
-    : viewMode === 'sbs-left'
-      ? '2D Left'
-      : '2D Right';
+    clearFullscreenControlsTimer();
+    fullscreenControlsTimerRef.current = setTimeout(() => {
+      setFullscreenControlsVisible(false);
+    }, FULLSCREEN_CONTROLS_HIDE_DELAY_MS);
+
+    return clearFullscreenControlsTimer;
+  }, [
+    clearFullscreenControlsTimer,
+    error,
+    fullscreen,
+    fullscreenOverlayLocked,
+    fullscreenControlsTick,
+    fullscreenControlsVisible,
+    modalVisible,
+  ]);
+
+  useEffect(() => {
+    if (fullscreen) {
+      setFullscreenControlsVisible(true);
+    } else {
+      setFullscreenOverlayLocked(false);
+    }
+  }, [fullscreen]);
+
+  const forceSingleImage = useMemo(() => {
+    const candidate = `${titleOverride ?? ''} ${movie?.name ?? ''}`.toLowerCase();
+    return /\b3d\b|sbs|hsbs|side[- ]by[- ]side|ou|over[- ]under|tab/.test(candidate);
+  }, [movie?.name, titleOverride]);
+
+  const subtitleMenuItems = useMemo<PlayerOptionMenuItem[]>(() => {
+    const items: PlayerOptionMenuItem[] = [
+      {
+        id: 'off',
+        label: 'Untertitel aus',
+        selected: textTrackId == null || textTrackId < 0,
+      },
+    ];
+
+    for (const track of textTracks) {
+      if (track.id < 0) continue;
+      items.push({
+        id: String(track.id),
+        label: track.name,
+        selected: textTrackId === track.id,
+      });
+    }
+
+    if (items.length === 1) {
+      items.push({
+        id: 'unavailable',
+        label: 'Keine Untertitel verfuegbar',
+        disabled: true,
+      });
+    }
+
+    return items;
+  }, [textTrackId, textTracks]);
+
+  const playerViewportContainerStyle = useMemo(
+    () =>
+      forceSingleImage
+        ? ({
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            overflow: 'hidden',
+          } as const)
+        : ({ width: '100%', height: '100%' } as const),
+    [forceSingleImage],
+  );
+
+  const playerViewportContentStyle = useMemo(
+    () =>
+      forceSingleImage
+        ? ({
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            width: '200%',
+            height: '100%',
+          } as const)
+        : ({ width: '100%', height: '100%' } as const),
+    [forceSingleImage],
+  );
 
   if (loading || !movie?.streamUrl) {
     return (
@@ -343,41 +487,84 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     );
   }
 
-
-  const modalVisible = resumePromptVisible && initialPositionSec > 0;
+  const playbackTitle = titleOverride || movie?.name || 'Playback';
+  const progressPercent = durationSec > 0 ? (currentTimeSec / durationSec) * 100 : 0;
+  const nextEpisodeLabel = nextEpisode?.titleOverride ?? null;
 
   return (
     <View className="flex-1 bg-slate-950">
       <View className="flex-1 bg-black">
         <View className="flex-1 overflow-hidden bg-black">
-          <VLCPlayer
-            key={movie.streamUrl}
-            ref={videoRef}
-            {...({
-              source: videoSource,
-              style: playerViewportStyle,
-              paused,
-              rate: 1.0,
-              audioTrack: audioTrackId,
-              videoAspectRatio: '16:9' as const,
-              resizeMode: viewMode === 'fit' ? 'contain' as const : 'cover' as const,
-              autoAspectRatio: false,
-              onError: handleError,
-              onProgress: (p: { currentTime: number; duration: number }) =>
-                handleProgress({
-                  currentTime: p.currentTime,
-                  playableDuration: p.duration,
-                  seekableDuration: p.duration,
-                }),
-              onLoad: handlePlayerReady,
-              onPlaying: handlePlayerReady,
-            } as any)}
-          />
-        </View>
-        {viewMode !== 'fit' && (
-          <View className="absolute left-4 top-4 rounded-full bg-black/70 px-3 py-1.5">
-            <Text className="text-xs text-slate-100">{viewModeLabel}</Text>
+          <View style={playerViewportContainerStyle}>
+            <View style={playerViewportContentStyle}>
+              <VLCPlayer
+                key={movie.streamUrl}
+                ref={videoRef}
+                {...({
+                  source: videoSource,
+                  style: { width: '100%', height: '100%' },
+                  paused,
+                  rate: 1.0,
+                  audioTrack: audioTrackId,
+                  textTrack: textTrackId,
+                  videoAspectRatio: forceSingleImage ? '32:9' as const : '16:9' as const,
+                  autoAspectRatio: !forceSingleImage,
+                  progressUpdateInterval: VLC_PROGRESS_UPDATE_INTERVAL_MS,
+                  onError: handleError,
+                  onProgress: (p: { currentTime: number; duration: number }) =>
+                    handleProgress({
+                      currentTime: p.currentTime,
+                      playableDuration: p.duration,
+                      seekableDuration: p.duration,
+                    }),
+                  onLoad: handlePlayerReady,
+                  onPlaying: handlePlayerReady,
+                } as any)}
+              />
+            </View>
           </View>
+        </View>
+        {fullscreen && !error && !modalVisible && (
+          <FullscreenPlaybackOverlay
+            visible={fullscreenControlsVisible}
+            title={playbackTitle}
+            paused={paused}
+            currentTimeLabel={formatTime(currentTimeSec)}
+            durationLabel={formatTime(durationSec)}
+            progressPercent={progressPercent}
+            onTogglePlay={() => setPaused((value) => !value)}
+            onRewind={() => seekBy(-10)}
+            onForward={() => seekBy(30)}
+            onExitFullscreen={() => setFullscreen(false)}
+            onWake={showFullscreenControls}
+            onInteract={showFullscreenControls}
+            subtitleItems={subtitleMenuItems}
+            subtitlesDisabled={false}
+            onSubtitleSelect={(id) => {
+              if (id === 'off') {
+                setTextTrackId(undefined);
+                return;
+              }
+              if (id === 'unavailable') return;
+              setTextTrackId(Number(id));
+            }}
+            onOverlayLockChange={setFullscreenOverlayLocked}
+            nextEpisodeLabel={nextEpisodeLabel}
+            onNextEpisode={
+              nextEpisode
+                ? () => {
+                    saveProgress(currentTimeRef.current, durationRef.current);
+                    navigation.replace('MoviePlayer', {
+                      movieId: nextEpisode.movieId,
+                      episodeId: nextEpisode.episodeId,
+                      streamUrlOverride: nextEpisode.streamUrlOverride,
+                      titleOverride: nextEpisode.titleOverride,
+                      episodeQueue,
+                    });
+                  }
+                : undefined
+            }
+          />
         )}
         {error && (
           <View className="absolute inset-0 items-center justify-center bg-black/75">
@@ -494,14 +681,6 @@ export function MoviePlayerScreen({ route, navigation }: any) {
             >
               <MaterialCommunityIcons name="fullscreen" size={22} color="#e5e7eb" />
             </Pressable>
-
-            <Pressable
-              onPress={cycleViewMode}
-              focusable={!modalVisible}
-              className="ml-3 rounded-full border border-slate-600 px-3 py-2"
-            >
-              <Text className="text-xs text-slate-200">{viewModeLabel}</Text>
-            </Pressable>
           </View>
 
           <View className="flex-row items-center">
@@ -519,23 +698,6 @@ export function MoviePlayerScreen({ route, navigation }: any) {
         </View>
       )}
 
-      {fullscreen && (
-        <View className="absolute bottom-6 right-6 flex-row items-center">
-          <Pressable
-            onPress={() => setFullscreen(false)}
-            onFocus={() => setFocusedControl('fullscreen')}
-            onBlur={() => setFocusedControl(null)}
-            focusable
-            className={`h-11 w-11 items-center justify-center rounded-full border bg-slate-900/90 ${
-              focusedControl === 'fullscreen'
-                ? 'border-purple-300'
-                : 'border-slate-600'
-            }`}
-          >
-            <MaterialCommunityIcons name="fullscreen-exit" size={22} color="#e5e7eb" />
-          </Pressable>
-        </View>
-      )}
     </View>
   );
 }
