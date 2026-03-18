@@ -13,6 +13,13 @@ const PROGRESS_UI_UPDATE_MS = 1000;
 const VLC_PROGRESS_SCALE = 1000;
 
 type FocusedControl = 'play' | 'rewind' | 'forward' | 'fullscreen' | 'back' | null;
+type ViewMode = 'fit' | 'sbs-left' | 'sbs-right';
+type AudioTrackInfo = { id: number; name: string };
+type PlayerLoadEvent = {
+  duration?: number;
+  audioTracks?: AudioTrackInfo[];
+  videoSize?: { width?: number; height?: number };
+};
 
 export function MoviePlayerScreen({ route, navigation }: any) {
   const { movieId, episodeId, streamUrlOverride, titleOverride } = route.params ?? {};
@@ -27,6 +34,8 @@ export function MoviePlayerScreen({ route, navigation }: any) {
   const [focusedControl, setFocusedControl] = useState<FocusedControl>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [resumePromptVisible, setResumePromptVisible] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('fit');
+  const [audioTrackId, setAudioTrackId] = useState<number | undefined>(undefined);
 
   const videoRef = useRef<any>(null);
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -222,9 +231,21 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     [currentTimeSec, durationSec, seekToTime],
   );
 
-  const handlePlayerReady = useCallback((event?: { duration?: number }) => {
+  const handlePlayerReady = useCallback((event?: PlayerLoadEvent) => {
     loadedRef.current = true;
     setError(null);
+
+    console.log('[MoviePlayerScreen][VLC onLoad]', {
+      movieId,
+      episodeId,
+      streamUrl: movie?.streamUrl,
+      durationRaw: event?.duration,
+      durationSec: event?.duration ? event.duration / VLC_PROGRESS_SCALE : 0,
+      videoSize: event?.videoSize ?? null,
+      audioTracks: event?.audioTracks ?? [],
+      selectedAudioTrackId: audioTrackId ?? null,
+      viewMode,
+    });
 
     const duration = event?.duration ? event.duration / VLC_PROGRESS_SCALE : 0;
     if (duration > 0) {
@@ -232,8 +253,15 @@ export function MoviePlayerScreen({ route, navigation }: any) {
       setDurationSec((prev) => (Math.abs(prev - duration) >= 1 ? duration : prev));
     }
 
+    if (audioTrackId == null && event?.audioTracks?.length === 1) {
+      const singleTrack = event.audioTracks[0];
+      if (singleTrack && singleTrack.id >= 0) {
+        setAudioTrackId(singleTrack.id);
+      }
+    }
+
     applyPendingSeek();
-  }, [applyPendingSeek]);
+  }, [applyPendingSeek, audioTrackId, episodeId, movie?.streamUrl, movieId, viewMode]);
 
   const formatTime = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return '0:00';
@@ -243,19 +271,23 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const videoSource = useMemo(() => ({
-    uri: movie?.streamUrl ?? '',
-  }), [movie?.streamUrl]);
-
   const initOptions = useMemo(
     () => [
       '--network-caching=2000',
       '--live-caching=2500',
       '--file-caching=2000',
+      '--audio-resampler=soxr',
+      '--no-audio-time-stretch',
       '--http-reconnect',
     ],
     [],
   );
+
+  const videoSource = useMemo(() => ({
+    uri: movie?.streamUrl ?? '',
+    initType: 2 as const,
+    initOptions: [...initOptions],
+  }), [movie?.streamUrl, initOptions]);
 
   useEffect(() => {
     loadedRef.current = false;
@@ -266,7 +298,38 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     setCurrentTimeSec(0);
     setDurationSec(0);
     setError(null);
+    setViewMode('fit');
+    setAudioTrackId(undefined);
   }, [movie?.streamUrl]);
+
+  const cycleViewMode = useCallback(() => {
+    setViewMode((current) => {
+      if (current === 'fit') return 'sbs-left';
+      if (current === 'sbs-left') return 'sbs-right';
+      return 'fit';
+    });
+  }, []);
+
+  const playerViewportStyle = useMemo(() => {
+    if (viewMode === 'fit') {
+      return { width: '100%' as const, height: '100%' as const, left: 0 as const };
+    }
+
+    return {
+      position: 'absolute' as const,
+      top: 0,
+      bottom: 0,
+      width: '200%' as const,
+      height: '100%' as const,
+      left: viewMode === 'sbs-left' ? 0 : '-100%',
+    };
+  }, [viewMode]);
+
+  const viewModeLabel = viewMode === 'fit'
+    ? 'Fit'
+    : viewMode === 'sbs-left'
+      ? '2D Left'
+      : '2D Right';
 
   if (loading || !movie?.streamUrl) {
     return (
@@ -286,30 +349,36 @@ export function MoviePlayerScreen({ route, navigation }: any) {
   return (
     <View className="flex-1 bg-slate-950">
       <View className="flex-1 bg-black">
-        <VLCPlayer
-          key={movie.streamUrl}
-          ref={videoRef}
-          {...({
-            source: videoSource,
-            style: { width: '100%', height: '100%' },
-            paused,
-            rate: 1.0,
-            initType: 2,
-            initOptions,
-            videoAspectRatio: '16:9' as const,
-            resizeMode: 'contain' as const,
-            autoAspectRatio: true,
-            onError: handleError,
-            onProgress: (p: { currentTime: number; duration: number }) =>
-              handleProgress({
-                currentTime: p.currentTime,
-                playableDuration: p.duration,
-                seekableDuration: p.duration,
-              }),
-            onLoad: handlePlayerReady,
-            onPlaying: handlePlayerReady,
-          } as any)}
-        />
+        <View className="flex-1 overflow-hidden bg-black">
+          <VLCPlayer
+            key={movie.streamUrl}
+            ref={videoRef}
+            {...({
+              source: videoSource,
+              style: playerViewportStyle,
+              paused,
+              rate: 1.0,
+              audioTrack: audioTrackId,
+              videoAspectRatio: '16:9' as const,
+              resizeMode: viewMode === 'fit' ? 'contain' as const : 'cover' as const,
+              autoAspectRatio: false,
+              onError: handleError,
+              onProgress: (p: { currentTime: number; duration: number }) =>
+                handleProgress({
+                  currentTime: p.currentTime,
+                  playableDuration: p.duration,
+                  seekableDuration: p.duration,
+                }),
+              onLoad: handlePlayerReady,
+              onPlaying: handlePlayerReady,
+            } as any)}
+          />
+        </View>
+        {viewMode !== 'fit' && (
+          <View className="absolute left-4 top-4 rounded-full bg-black/70 px-3 py-1.5">
+            <Text className="text-xs text-slate-100">{viewModeLabel}</Text>
+          </View>
+        )}
         {error && (
           <View className="absolute inset-0 items-center justify-center bg-black/75">
             <Text className="mb-3 px-6 text-center text-slate-100">
@@ -424,6 +493,14 @@ export function MoviePlayerScreen({ route, navigation }: any) {
               }`}
             >
               <MaterialCommunityIcons name="fullscreen" size={22} color="#e5e7eb" />
+            </Pressable>
+
+            <Pressable
+              onPress={cycleViewMode}
+              focusable={!modalVisible}
+              className="ml-3 rounded-full border border-slate-600 px-3 py-2"
+            >
+              <Text className="text-xs text-slate-200">{viewModeLabel}</Text>
             </Pressable>
           </View>
 
