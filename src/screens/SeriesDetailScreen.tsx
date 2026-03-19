@@ -1,3 +1,4 @@
+import { useFocusEffect } from '@react-navigation/native';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -10,10 +11,10 @@ import {
   findNodeHandle,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { mediaService } from '../services/mediaService';
 import { mediaCollectionRepo } from '../db/repositories/mediaCollectionRepo';
 import { watchProgressRepo } from '../db/repositories/watchProgressRepo';
 import type { SeriesItem } from '../lib/types';
+import { mediaService } from '../services/mediaService';
 
 type FocusedButton = 'back' | 'play' | 'favorite' | 'season' | null;
 
@@ -32,6 +33,24 @@ type Season = {
   seasonNumber: number;
   episodes: Episode[];
 };
+
+type EpisodeProgress = {
+  positionSec: number;
+  durationSec?: number;
+  updatedAt: number;
+};
+
+function getEpisodeProgressPercent(progress?: EpisodeProgress) {
+  if (!progress || !progress.durationSec || progress.durationSec <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(1, progress.positionSec / progress.durationSec));
+}
+
+function isEpisodeComplete(progress?: EpisodeProgress) {
+  return getEpisodeProgressPercent(progress) >= 0.97;
+}
 
 const SeasonChip = memo(function SeasonChip({
   label,
@@ -133,13 +152,19 @@ const SeasonModal = memo(function SeasonModal({
 
 const EpisodeCard = memo(function EpisodeCard({
   episode,
+  progress,
+  isLastWatched,
   onPlay,
 }: {
   episode: Episode;
+  progress?: EpisodeProgress;
+  isLastWatched: boolean;
   onPlay: (episode: Episode) => void;
 }) {
   const [focused, setFocused] = useState(false);
   const imageUri = episode.imageUrl?.trim() || null;
+  const progressPercent = getEpisodeProgressPercent(progress);
+  const showProgress = progressPercent > 0;
 
   return (
     <Pressable
@@ -147,12 +172,20 @@ const EpisodeCard = memo(function EpisodeCard({
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       focusable
-      className={`mb-3 mr-3 min-w-[280px] max-w-[380px] flex-1 overflow-hidden rounded-2xl border-2 ${
+      className={`relative mb-3 mr-3 min-h-[92px] min-w-[280px] max-w-[380px] flex-1 overflow-hidden rounded-2xl border-2 ${
         focused ? 'border-purple-300 bg-slate-800' : 'border-slate-800 bg-slate-900/70'
       }`}
     >
+      {isLastWatched ? (
+        <View className="absolute right-3 top-2 rounded-full bg-cyan-400/15 px-3 py-1">
+          <Text className="text-[10px] font-semibold uppercase tracking-[1px] text-cyan-200">
+            Letzte
+          </Text>
+        </View>
+      ) : null}
+
       <View className="flex-row">
-        <View className="h-[68px] w-[120px] shrink-0 overflow-hidden rounded-l-xl bg-slate-800">
+        <View className="h-[92px] w-[132px] items-center justify-center overflow-hidden rounded-l-xl bg-slate-800">
           {imageUri ? (
             <Image source={{ uri: imageUri }} className="h-full w-full" resizeMode="cover" />
           ) : (
@@ -161,17 +194,35 @@ const EpisodeCard = memo(function EpisodeCard({
             </View>
           )}
         </View>
-        <View className="min-w-0 flex-1 justify-center p-3">
-          <Text className="mb-0.5 text-xs font-medium text-slate-400" numberOfLines={1}>
-            S{episode.seasonNumber} · E{episode.episodeNumber}
-          </Text>
+
+        <View className="min-w-0 flex-1 justify-center p-3 pr-16">
+          <View className="mb-0.5 flex-row items-center gap-2">
+            <Text className="min-w-0 flex-1 text-xs font-medium text-slate-400" numberOfLines={1}>
+              S{episode.seasonNumber} - E{episode.episodeNumber}
+            </Text>
+          </View>
+
           <Text className="text-sm font-semibold text-slate-50" numberOfLines={2}>
             {episode.title}
           </Text>
+
           {episode.summary ? (
             <Text className="mt-1 text-[11px] text-slate-400" numberOfLines={2}>
               {episode.summary}
             </Text>
+          ) : null}
+
+          {showProgress ? (
+            <View className="mt-2">
+              <View className="h-1.5 overflow-hidden rounded-full bg-slate-700">
+                <View
+                  className={`h-full rounded-full ${
+                    isEpisodeComplete(progress) ? 'bg-emerald-400' : 'bg-cyan-300'
+                  }`}
+                  style={{ width: `${Math.max(4, Math.round(progressPercent * 100))}%` }}
+                />
+              </View>
+            </View>
           ) : null}
         </View>
       </View>
@@ -192,6 +243,23 @@ export function SeriesDetailScreen({ route, navigation }: any) {
   const [selectedSeasonNumber, setSelectedSeasonNumber] = useState<number | null>(null);
   const [seasonModalVisible, setSeasonModalVisible] = useState(false);
   const [seriesDescription, setSeriesDescription] = useState<string | null>(null);
+  const [episodeProgressMap, setEpisodeProgressMap] = useState<Record<string, EpisodeProgress>>({});
+
+  const loadEpisodeProgress = useCallback(async () => {
+    const progressRows = await watchProgressRepo.listByContent('series', seriesId);
+    const nextMap: Record<string, EpisodeProgress> = {};
+
+    for (const row of progressRows) {
+      if (!row.episodeId) continue;
+      nextMap[row.episodeId] = {
+        positionSec: row.positionSec,
+        durationSec: row.durationSec,
+        updatedAt: row.updatedAt,
+      };
+    }
+
+    setEpisodeProgressMap(nextMap);
+  }, [seriesId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -199,6 +267,7 @@ export function SeriesDetailScreen({ route, navigation }: any) {
       try {
         const [row] = await mediaService.getSeriesByIds([seriesId]);
         if (!cancelled) setSeries(row ?? null);
+
         const favIds = await mediaCollectionRepo.favoriteIds('series');
         if (!cancelled) setFavorite(favIds.includes(seriesId));
         if (cancelled) return;
@@ -229,6 +298,12 @@ export function SeriesDetailScreen({ route, navigation }: any) {
     };
   }, [seriesId]);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadEpisodeProgress();
+    }, [loadEpisodeProgress]),
+  );
+
   const toggleFavorite = useCallback(async () => {
     const next = !favorite;
     setFavorite(next);
@@ -251,6 +326,20 @@ export function SeriesDetailScreen({ route, navigation }: any) {
   );
 
   const episodes = currentSeason?.episodes ?? [];
+
+  const lastWatchedEpisodeId = useMemo(() => {
+    let latestEpisodeId: string | null = null;
+    let latestUpdatedAt = 0;
+
+    for (const [episodeId, progress] of Object.entries(episodeProgressMap)) {
+      if (progress.updatedAt > latestUpdatedAt) {
+        latestUpdatedAt = progress.updatedAt;
+        latestEpisodeId = episodeId;
+      }
+    }
+
+    return latestEpisodeId;
+  }, [episodeProgressMap]);
 
   const handlePlayEpisode = useCallback(
     async (episode: Episode) => {
@@ -362,7 +451,10 @@ export function SeriesDetailScreen({ route, navigation }: any) {
                 {series.name}
               </Text>
 
-              <Text className="mb-6 max-w-[620px] text-sm leading-5 text-slate-400" numberOfLines={6}>
+              <Text
+                className="mb-6 max-w-[620px] text-sm leading-5 text-slate-400"
+                numberOfLines={6}
+              >
                 {seriesDescription?.trim() ||
                   'Keine Beschreibung vom Provider verfuegbar. Waehle eine Episode aus und lehne dich zurueck.'}
               </Text>
@@ -447,7 +539,13 @@ export function SeriesDetailScreen({ route, navigation }: any) {
               <Text className="mt-2 text-sm text-slate-500">Keine Episoden verfuegbar.</Text>
             ) : (
               episodes.map((episode) => (
-                <EpisodeCard key={episode.id} episode={episode} onPlay={handlePlayEpisode} />
+                <EpisodeCard
+                  key={episode.id}
+                  episode={episode}
+                  progress={episodeProgressMap[episode.id]}
+                  isLastWatched={lastWatchedEpisodeId === episode.id}
+                  onPlay={handlePlayEpisode}
+                />
               ))
             )}
           </View>

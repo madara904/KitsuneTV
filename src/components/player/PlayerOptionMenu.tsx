@@ -32,6 +32,7 @@ export function PlayerOptionMenu({
 }: PlayerOptionMenuProps) {
   const [open, setOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [triggerFocused, setTriggerFocused] = useState(false);
   const triggerRef = useRef<React.ElementRef<typeof Pressable>>(null);
   const optionRefs = useRef<Array<React.ElementRef<typeof Pressable> | null>>([]);
 
@@ -118,14 +119,20 @@ export function PlayerOptionMenu({
           onInteract?.();
           setOpen((current) => !current);
         }}
-        onFocus={() => onInteract?.()}
+        onFocus={() => {
+          setTriggerFocused(true);
+          onInteract?.();
+        }}
+        onBlur={() => setTriggerFocused(false)}
         focusable
         className={`h-14 w-14 items-center justify-center rounded-full border ${
           disabled
             ? 'border-slate-800 bg-slate-950/40 opacity-50'
             : open
               ? 'border-cyan-300 bg-cyan-300/20'
-              : 'border-slate-500/40 bg-slate-950/65'
+              : triggerFocused
+                ? 'border-cyan-300 bg-cyan-300/15'
+                : 'border-slate-500/40 bg-slate-950/65'
         }`}
       >
         {triggerLabel ? (

@@ -77,6 +77,7 @@ export function FullscreenPlaybackOverlay({
   const [playHandle, setPlayHandle] = useState<number | null>(null);
   const [forwardHandle, setForwardHandle] = useState<number | null>(null);
   const [closeHandle, setCloseHandle] = useState<number | null>(null);
+  const [wakeHandle, setWakeHandle] = useState<number | null>(null);
   const captureHandle = useCallback(
     (
       setter: React.Dispatch<React.SetStateAction<number | null>>,
@@ -137,13 +138,26 @@ export function FullscreenPlaybackOverlay({
   if (!visible) {
     return (
       <Pressable
-        ref={wakeRef}
+        ref={(node) => {
+          wakeRef.current = node;
+          captureHandle(setWakeHandle, node);
+        }}
         onPress={onWake}
         onFocus={() => setFocusedButton(null)}
         focusable
         hasTVPreferredFocus
         className="absolute inset-0"
         {...(hiddenOverlayKeyHandlers as any)}
+        {...(
+          wakeHandle != null
+            ? ({
+                nextFocusUp: wakeHandle,
+                nextFocusDown: wakeHandle,
+                nextFocusLeft: wakeHandle,
+                nextFocusRight: wakeHandle,
+              } as any)
+            : {}
+        )}
       />
     );
   }

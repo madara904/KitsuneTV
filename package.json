@@ -10,7 +10,8 @@
     "start": "node scripts/clean-metro-watch.js && react-native start",
     "test": "jest",
     "build:apk:debug": "set \"JAVA_HOME=C:\\Program Files\\Microsoft\\jdk-17.0.18.8-hotspot\" && set \"ANDROID_HOME=%LOCALAPPDATA%\\Android\\Sdk\" && set \"PATH=%JAVA_HOME%\\bin;%ANDROID_HOME%\\platform-tools;%PATH%\" && cd android && gradlew.bat assembleDebug",
-    "build:apk:release": "set \"JAVA_HOME=C:\\Program Files\\Microsoft\\jdk-17.0.18.8-hotspot\" && set \"ANDROID_HOME=%LOCALAPPDATA%\\Android\\Sdk\" && set \"PATH=%JAVA_HOME%\\bin;%ANDROID_HOME%\\platform-tools;%PATH%\" && cd android && gradlew.bat assembleRelease"
+    "build:apk:release": "set \"JAVA_HOME=C:\\Program Files\\Microsoft\\jdk-17.0.18.8-hotspot\" && set \"ANDROID_HOME=%LOCALAPPDATA%\\Android\\Sdk\" && set \"PATH=%JAVA_HOME%\\bin;%ANDROID_HOME%\\platform-tools;%PATH%\" && cd android && gradlew.bat assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a",
+    "build:aab:release": "set \"JAVA_HOME=C:\\Program Files\\Microsoft\\jdk-17.0.18.8-hotspot\" && set \"ANDROID_HOME=%LOCALAPPDATA%\\Android\\Sdk\" && set \"PATH=%JAVA_HOME%\\bin;%ANDROID_HOME%\\platform-tools;%PATH%\" && cd android && gradlew.bat bundleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a"
   },
   "dependencies": {
     "@react-native-clipboard/clipboard": "^1.16.3",

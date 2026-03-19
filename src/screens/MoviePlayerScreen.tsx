@@ -1,5 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  BackHandler,
+  Pressable,
+  Text,
+  View,
+} from 'react-native';
 import { VLCPlayer } from 'react-native-vlc-media-player';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { mediaService } from '../services/mediaService';
@@ -63,6 +69,9 @@ export function MoviePlayerScreen({ route, navigation }: any) {
   const [fullscreenControlsVisible, setFullscreenControlsVisible] = useState(false);
   const [fullscreenControlsTick, setFullscreenControlsTick] = useState(0);
   const [fullscreenOverlayLocked, setFullscreenOverlayLocked] = useState(false);
+  const [loadedVideoSize, setLoadedVideoSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
 
   const videoRef = useRef<any>(null);
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -288,6 +297,12 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     loadedRef.current = true;
     setError(null);
 
+    const w = event?.videoSize?.width;
+    const h = event?.videoSize?.height;
+    if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
+      setLoadedVideoSize({ width: w, height: h });
+    }
+
     if (__DEV__) {
       console.log('[MoviePlayerScreen][VLC onLoad]', {
         movieId,
@@ -371,6 +386,7 @@ export function MoviePlayerScreen({ route, navigation }: any) {
     setTextTrackId(undefined);
     setFullscreenControlsVisible(false);
     setFullscreenOverlayLocked(false);
+    setLoadedVideoSize(null);
   }, [movie?.streamUrl]);
   
   useEffect(() => {
@@ -412,9 +428,23 @@ export function MoviePlayerScreen({ route, navigation }: any) {
   }, [fullscreen]);
 
   const forceSingleImage = useMemo(() => {
+    // This mode intentionally crops to the left "eye" for SBS 3D sources (200% width).
+    // It must be conservative; false positives look like a horizontally shifted video.
     const candidate = `${titleOverride ?? ''} ${movie?.name ?? ''}`.toLowerCase();
-    return /\b3d\b|sbs|hsbs|side[- ]by[- ]side|ou|over[- ]under|tab/.test(candidate);
-  }, [movie?.name, titleOverride]);
+    const titleSuggests3dSbs =
+      /\b3d\b/.test(candidate) ||
+      /\bhsbs\b/.test(candidate) ||
+      /\bsbs\b/.test(candidate) ||
+      /side[- ]by[- ]side/.test(candidate);
+
+    const ratio =
+      loadedVideoSize && loadedVideoSize.height > 0
+        ? loadedVideoSize.width / loadedVideoSize.height
+        : null;
+    const looksLikeSbsByGeometry = ratio != null && ratio >= 2.6;
+
+    return titleSuggests3dSbs && looksLikeSbsByGeometry;
+  }, [loadedVideoSize, movie?.name, titleOverride]);
 
   const subtitleMenuItems = useMemo<PlayerOptionMenuItem[]>(() => {
     const items: PlayerOptionMenuItem[] = [

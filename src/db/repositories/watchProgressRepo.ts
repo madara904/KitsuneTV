@@ -37,6 +37,33 @@ export const watchProgressRepo = {
     };
   },
 
+  async listByContent(
+    contentType: 'movie' | 'series',
+    contentId: string,
+  ): Promise<WatchProgress[]> {
+    const res = await getDb().executeAsync(
+      `SELECT content_type, content_id, episode_id, position_sec, duration_sec, updated_at
+       FROM watch_progress
+       WHERE content_type = ? AND content_id = ?
+       ORDER BY updated_at DESC`,
+      [contentType, contentId],
+    );
+
+    const rows = (res.rows?._array ?? []) as Array<Record<string, unknown>>;
+    return rows.map((row) => {
+      const dbContentType = String(row.content_type);
+      const contentTypeSafe = dbContentType === 'series' ? 'series' : 'movie';
+      return {
+        contentType: contentTypeSafe,
+        contentId: String(row.content_id),
+        episodeId: String(row.episode_id),
+        positionSec: Number(row.position_sec),
+        durationSec: row.duration_sec != null ? Number(row.duration_sec) : undefined,
+        updatedAt: Number(row.updated_at),
+      };
+    });
+  },
+
   async save(
     contentType: 'movie' | 'series',
     contentId: string,
