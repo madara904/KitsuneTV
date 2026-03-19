@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, findNodeHandle } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 type Props = {
@@ -16,6 +16,8 @@ type Props = {
   onBlurKey?: () => void;
   nextFocusUp?: number | null;
   nextFocusDown?: number | null;
+  /** Optional callback to expose the action button node handle for explicit nextFocus wiring. */
+  onActionNodeHandle?: (handle: number | null) => void;
 };
 
 export function EmptyState({
@@ -30,6 +32,7 @@ export function EmptyState({
   onBlurKey,
   nextFocusUp,
   nextFocusDown,
+  onActionNodeHandle,
 }: Props) {
   const hasAction = !!actionLabel && !!onActionPress;
 
@@ -45,6 +48,11 @@ export function EmptyState({
       ) : null}
       {hasAction && (
         <Pressable
+          ref={(node) => {
+            if (!onActionNodeHandle) return;
+            const handle = node ? findNodeHandle(node) : null;
+            onActionNodeHandle(handle);
+          }}
           onPress={onActionPress}
           onFocus={focusKey && onFocusKey ? () => onFocusKey(focusKey) : undefined}
           onBlur={onBlurKey}

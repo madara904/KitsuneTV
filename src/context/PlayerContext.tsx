@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
-import type { Channel } from '../lib/types';
+import type { Channel, MoviePlayback } from '../lib/types';
 
 /** Android TV: node handle of first focusable in player (play button) so channel list can set nextFocusRight */
 export type PlayerFocusHandle = number | null;
@@ -7,6 +7,9 @@ export type PlayerFocusHandle = number | null;
 type PlayerContextValue = {
   currentChannel: Channel | null;
   setCurrentChannel: (ch: Channel | null) => void;
+  /** Currently playing movie (VOD). When set, live channel is cleared. */
+  currentVod: MoviePlayback | null;
+  setCurrentVod: (v: MoviePlayback | null) => void;
   fullscreen: boolean;
   setFullscreen: (v: boolean) => void;
   playerFocusNodeHandle: PlayerFocusHandle;
@@ -20,6 +23,7 @@ const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [currentChannel, setCurrentChannel] = useState<Channel | null>(null);
+  const [currentVod, setCurrentVod] = useState<MoviePlayback | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [playerFocusNodeHandle, setPlayerFocusNodeHandle] = useState<PlayerFocusHandle>(null);
   const [playerControlsFocused, setPlayerControlsFocused] = useState(false);
@@ -28,6 +32,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       value={{
         currentChannel,
         setCurrentChannel,
+        currentVod,
+        setCurrentVod,
         fullscreen,
         setFullscreen,
         playerFocusNodeHandle,

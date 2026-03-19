@@ -12,6 +12,7 @@
  */
 
 import React, {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -31,7 +32,10 @@ import {
 import Video, { type VideoRef } from 'react-native-video';
 import { usePlayer } from '../../context/PlayerContext';
 import { recentRepo } from '../../db/repositories/recentRepo';
+import { watchProgressRepo } from '../../db/repositories/watchProgressRepo';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+
+const VOD_PROGRESS_SAVE_INTERVAL_MS = 10000;
 
 const PLAYER_WIDTH = 380;
 const CONTROLS_HIDE_DELAY_MS = 3000;
@@ -130,22 +134,32 @@ function useControlsVisibility(active: boolean) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export function PlayerColumn() {
+export const PlayerColumn = memo(function PlayerColumn() {
   const {
     currentChannel,
     setCurrentChannel,
+    currentVod,
+    setCurrentVod,
     fullscreen,
     setFullscreen,
     setPlayerFocusNodeHandle,
     setPlayerControlsFocused,
   } = usePlayer();
 
+  const hasVod = currentVod != null;
+  const isLive = currentChannel != null && !hasVod;
+  const streamUrl = currentChannel?.streamUrl ?? currentVod?.streamUrl ?? '';
+
   const [error, setError] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const [focusedBtn, setFocusedBtn] = useState<FocusedBtn>(null);
+  const [initialPositionSec, setInitialPositionSec] = useState<number>(0);
+  const lastProgressRef = useRef({ currentTime: 0, duration: 0 });
+  const vodSaveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const videoLoadedRef = useRef(false);
 
   const { controlsVisible, showControls } = useControlsVisibility(
-    fullscreen && !!currentChannel,
+    fullscreen && (!!currentChannel || !!currentVod),
   );
 
   const playBtnRef = useRef<View>(null);
@@ -244,16 +258,78 @@ export function PlayerColumn() {
       setPlayerFocusNodeHandle(null);
       return () => setPlayerFocusNodeHandle(null);
     }
-    const el = currentChannel ? playBtnRef.current : placeholderRef.current;
+    const hasContent = currentChannel != null || currentVod != null;
+    const el = hasContent ? playBtnRef.current : placeholderRef.current;
     setPlayerFocusNodeHandle(findNodeHandle(el));
     return () => setPlayerFocusNodeHandle(null);
-  }, [currentChannel, fullscreen, setPlayerFocusNodeHandle]);
+  }, [currentChannel, currentVod, fullscreen, setPlayerFocusNodeHandle]);
 
   useEffect(() => {
     if (!currentChannel?.id) return;
     const t = setTimeout(() => recentRepo.add(currentChannel.id), 500);
     return () => clearTimeout(t);
   }, [currentChannel?.id]);
+
+  // Load saved position when opening a movie (VOD)
+  useEffect(() => {
+    if (!currentVod || currentVod.type !== 'movie') {
+      setInitialPositionSec(0);
+      videoLoadedRef.current = false;
+      return;
+    }
+    videoLoadedRef.current = false;
+    let cancelled = false;
+    watchProgressRepo.get('movie', currentVod.id).then((progress) => {
+      if (!cancelled && progress && progress.positionSec > 0) {
+        setInitialPositionSec(progress.positionSec);
+      } else {
+        setInitialPositionSec(0);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [currentVod]);
+
+  // When saved position arrives after video already loaded, seek now
+  useEffect(() => {
+    if (!hasVod || initialPositionSec <= 0 || !videoLoadedRef.current) return;
+    videoRef.current?.seek(initialPositionSec);
+    setInitialPositionSec(0);
+  }, [hasVod, initialPositionSec]);
+
+  // Save VOD progress periodically and on unmount/close
+  const saveVodProgress = useCallback(() => {
+    if (!currentVod || currentVod.type !== 'movie') return;
+    const { currentTime, duration } = lastProgressRef.current;
+    if (duration > 0 && currentTime >= 0) {
+      watchProgressRepo.save('movie', currentVod.id, undefined, currentTime, duration);
+    }
+  }, [currentVod]);
+
+  useEffect(() => {
+    if (!hasVod || currentVod?.type !== 'movie') {
+      if (vodSaveTimerRef.current) {
+        clearInterval(vodSaveTimerRef.current);
+        vodSaveTimerRef.current = null;
+      }
+      return;
+    }
+    vodSaveTimerRef.current = setInterval(saveVodProgress, VOD_PROGRESS_SAVE_INTERVAL_MS);
+    return () => {
+      if (vodSaveTimerRef.current) {
+        clearInterval(vodSaveTimerRef.current);
+        vodSaveTimerRef.current = null;
+      }
+    };
+  }, [hasVod, currentVod?.id, currentVod?.type, saveVodProgress]);
+
+  const clearPlayer = useCallback(() => {
+    if (hasVod) saveVodProgress();
+    setCurrentChannel(null);
+    setCurrentVod(null);
+    setError(null);
+    setPaused(false);
+    setInitialPositionSec(0);
+  }, [hasVod, saveVodProgress, setCurrentChannel, setCurrentVod]);
 
   const handlePlayerError = useCallback((e: unknown) => {
     try {
@@ -273,7 +349,26 @@ export function PlayerColumn() {
     setPaused(true);
   }, []);
 
-  if (!currentChannel) {
+  const handleVideoLoad = useCallback(() => {
+    setError(null);
+    videoLoadedRef.current = true;
+    if (hasVod && initialPositionSec > 0) {
+      videoRef.current?.seek(initialPositionSec);
+      setInitialPositionSec(0);
+    }
+  }, [hasVod, initialPositionSec]);
+
+  const handleProgress = useCallback(
+    (e: Readonly<{ currentTime: number; playableDuration: number; seekableDuration: number }>) => {
+      lastProgressRef.current = {
+        currentTime: e.currentTime,
+        duration: e.seekableDuration > 0 ? e.seekableDuration : e.playableDuration,
+      };
+    },
+    [],
+  );
+
+  if (!streamUrl) {
     return (
       <View
         style={{
@@ -293,7 +388,7 @@ export function PlayerColumn() {
         />
         <MaterialCommunityIcons name="television-play" size={48} color="#3f3f46" />
         <Text style={{ color: '#71717a', marginTop: 8, textAlign: 'center', paddingHorizontal: 16 }}>
-          Kanal wählen
+          {hasVod ? 'Film wird geladen…' : 'Kanal wählen'}
         </Text>
       </View>
     );
@@ -340,13 +435,20 @@ export function PlayerColumn() {
 
   // v6 API: source holds uri + bufferConfig (bufferConfig prop is deprecated)
   const videoSource = {
-    uri: currentChannel.streamUrl,
-    bufferConfig: {
-      minBufferMs: 8000,
-      maxBufferMs: 25000,
-      bufferForPlaybackMs: 2500,
-      bufferForPlaybackAfterRebufferMs: 5000,
-    },
+    uri: streamUrl,
+    bufferConfig: isLive
+      ? {
+          minBufferMs: 12000,
+          maxBufferMs: 30000,
+          bufferForPlaybackMs: 3000,
+          bufferForPlaybackAfterRebufferMs: 6000,
+        }
+      : {
+          minBufferMs: 8000,
+          maxBufferMs: 25000,
+          bufferForPlaybackMs: 2500,
+          bufferForPlaybackAfterRebufferMs: 5000,
+        },
   };
 
   // v6 docs: focusable=false so Video never steals TV focus; controls=false we use custom UI
@@ -358,9 +460,18 @@ export function PlayerColumn() {
     paused: paused || !!error,
     rate: 1.0,
     progressUpdateInterval: 1000,
-    useTextureView: true,
+    // SurfaceView ist auf vielen Android-TV Geräten stabiler für Live-Streams.
+    useTextureView: !isLive,
     onError: handlePlayerError,
-    onLoad: () => setError(null),
+    onLoad: handleVideoLoad,
+    onProgress: hasVod ? handleProgress : undefined,
+    onBuffer: isLive
+      ? (e: { isBuffering: boolean }) => {
+          if (!e.isBuffering && error) {
+            setError(null);
+          }
+        }
+      : undefined,
     focusable: false,
     controls: false,
     preventsDisplaySleepDuringVideoPlayback: true,
@@ -383,7 +494,7 @@ export function PlayerColumn() {
           </Text>
           <Pressable
             focusable
-            onPress={() => setCurrentChannel(null)}
+            onPress={clearPlayer}
             onFocus={() => setFocusedBtn('error-close')}
             onBlur={() => setFocusedBtn(null)}
             style={btnStyle(focusedBtn === 'error-close')}
@@ -485,7 +596,7 @@ export function PlayerColumn() {
             <Pressable
               ref={captureCloseRef}
               focusable
-              onPress={() => setCurrentChannel(null)}
+              onPress={clearPlayer}
               onFocus={() => {
                 setFocusedBtn('close');
                 setPlayerControlsFocused(true);
@@ -540,7 +651,7 @@ export function PlayerColumn() {
   ) : null;
 
   return (
-    <PlayerErrorBoundary onReset={() => setCurrentChannel(null)}>
+    <PlayerErrorBoundary onReset={clearPlayer}>
       <View
         ref={captureFullscreenContainerRef}
         style={containerStyle}
@@ -563,4 +674,4 @@ export function PlayerColumn() {
       </View>
     </PlayerErrorBoundary>
   );
-}
+});

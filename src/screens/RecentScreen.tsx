@@ -37,6 +37,7 @@ export function RecentScreen() {
     setCurrentChannel(channel);
   }, [setCurrentChannel]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [focusedId, setFocusedId] = useState<string | null>(null);
 
   if (channels.length === 0) {

@@ -19,6 +19,8 @@ type Props = {
   onSecondaryPress?: (channelId: string) => void;
   /** Node handle that should receive D-pad Right focus (Android TV). */
   nextFocusRight?: number | null;
+  /** Optional explicit D-pad Up target (helps keep focus out of sidebar). */
+  nextFocusUp?: number | null;
   /** When false, disables TV focus for row + secondary button. */
   focusable?: boolean;
   /** Called when either row or secondary gains focus; caller can distinguish via focusKey. */
@@ -27,6 +29,8 @@ type Props = {
   /** Optional override icon + color for secondary button. */
   secondaryIconName?: string;
   secondaryIconColor?: string;
+  /** Programmatically move focus to this row (used after filter/category changes). */
+  autoFocus?: boolean;
 };
 
 export const ChannelListItem = memo(function ChannelListItem({
@@ -37,29 +41,45 @@ export const ChannelListItem = memo(function ChannelListItem({
   onPress,
   onSecondaryPress,
   nextFocusRight,
+  nextFocusUp,
   focusable = true,
   onFocusKey,
   onBlurKey,
   secondaryIconName,
   secondaryIconColor,
+  autoFocus = false,
 }: Props) {
   const rowRef = useRef<React.ComponentRef<typeof Pressable>>(null);
   const secondaryRef = useRef<React.ComponentRef<typeof Pressable>>(null);
 
   // Ensure nextFocusRight is applied reliably on Android TV, even with list recycling.
   useEffect(() => {
-    if (nextFocusRight == null) return;
+    if (nextFocusRight == null && nextFocusUp == null) return;
     const refs = [rowRef.current, secondaryRef.current];
     refs.forEach((r) => {
       if (r?.setNativeProps) {
         try {
-          r.setNativeProps({ nextFocusRight });
+          r.setNativeProps({
+            ...(nextFocusRight != null ? { nextFocusRight } : {}),
+            ...(nextFocusUp != null ? { nextFocusUp } : {}),
+          });
         } catch {
           // ignore if unmounted
         }
       }
     });
-  }, [nextFocusRight]);
+  }, [nextFocusRight, nextFocusUp]);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    const ids = [0, 30, 120].map((delay) =>
+      setTimeout(() => {
+        const node = rowRef.current as unknown as { focus?: () => void } | null;
+        node?.focus?.();
+      }, delay),
+    );
+    return () => ids.forEach((id) => clearTimeout(id));
+  }, [autoFocus]);
 
   const focusKeyRow = `channel-${channel.id}`;
   const focusKeySecondary = `channel-secondary-${channel.id}`;
@@ -76,6 +96,7 @@ export const ChannelListItem = memo(function ChannelListItem({
       onFocus={() => onFocusKey?.(focusKeyRow)}
       onBlur={onBlurKey}
       {...(nextFocusRight != null ? ({ nextFocusRight } as { nextFocusRight: number }) : {})}
+      {...(nextFocusUp != null ? ({ nextFocusUp } as { nextFocusUp: number }) : {})}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -126,6 +147,7 @@ export const ChannelListItem = memo(function ChannelListItem({
           onFocus={() => onFocusKey?.(focusKeySecondary)}
           onBlur={onBlurKey}
           {...(nextFocusRight != null ? ({ nextFocusRight } as { nextFocusRight: number }) : {})}
+          {...(nextFocusUp != null ? ({ nextFocusUp } as { nextFocusUp: number }) : {})}
           style={{
             width: 40,
             height: 40,
